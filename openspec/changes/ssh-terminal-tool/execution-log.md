@@ -32,7 +32,22 @@
   - StreamableHTTPServerTransport 监听 127.0.0.1，Bearer token 鉴权（timingSafeEqual），设置变更/换 token 后自动 restart
   - **无状态模式**：每个请求新建 McpServer + transport，响应 close 后销毁（初版复用 transport 导致第 2 个请求起全部 500，序列实验 200/500/500/500 定位，参考官方 simpleStatelessStreamableHttp.js 修复后 200/200/200/200）；非 POST 返回 405、未知路径 404、错误 body 400
   - 7 个工具：list_connections（不含凭据字段）/ list_sessions / exec_command（50KB 截断：stdout 头尾各 24KB + stderr 头尾各 1KB + 省略标记）/ read_terminal / sftp_list / sftp_upload / sftp_download（经 uploadAndWait/downloadAndWait 复用 100MB 上限与取消）
-- 测试 `src/main/mcp/__tests__/mcpService.test.ts` 13/13 通过：截断 3 个、401（无/错 token）、initialize 握手、tools/list 7 工具、list_connections 无凭据（解析 JSON 断言无 password/privateKey*/passphrase 键）、list_sessions、exec 小/大、read_terminal、sftp 三工具、404/400、mcpEnabled=false 不启动
+- 测试 `src/main/mcp/__tests__/mcpService.test.ts` 13/13 通过（任务 6 提交时）：截断 3 个、401（无/错 token）、initialize 握手、tools/list 7 工具、list_connections 无凭据（解析 JSON 断言无 password/privateKey*/passphrase 键）、list_sessions、exec 小/大、read_terminal、sftp 三工具、404/400、mcpEnabled=false 不启动；任务 7 补参数校验后 14/14
 - `npm test` → 54/54 通过；`npm run typecheck` 通过；`npm run test:e2e` 3/3 通过（回归）
 - 过程中发现的测试问题：list_connections 断言因 `"authType": "password"` 子串误判 → 改为解析后检查键；JSON.stringify 无空格 → 断言改 `"ok":true`
 - 未覆盖：真实 MCP 客户端（Qoder）接入验证 → 归入任务 8
+
+### 任务 7 测试（完成）
+
+- 测试盘点（9 个文件）：
+  - 凭据加密：`credentialVault.test.ts`（AES-GCM 加解密、错误 key、篡改检测）
+  - 数据层：`connectionStore.test.ts`（无凭据落盘）、`settingsStore.test.ts`（token 重生成）
+  - 路径安全：`sftpService.test.ts` 7 个（`../` 拒绝、相对路径拒绝、斜杠折叠、非字符串）
+  - MCP：`mcpService.test.ts` 14 个（截断 3、鉴权、握手、tools/list、无凭据字段、zod 参数校验新增）
+  - 集成：`connectionManager.test.ts` 9 个（ssh2 Server 本地临时服务：连接、exec、认证失败、空闲销毁、会话输出/回显/readLines）
+  - SFTP 集成：`sftpService.integration.test.ts` 10 个（fake sftp 通道）
+  - e2e：`app.spec.ts` 3 个（真实 Electron + ssh2 测试服务器）
+- `npm run test` → 55/55 通过；`npm run typecheck` 通过；`npm run test:e2e` 3/3 通过
+- 7.2 偏差说明：连接/exec 全链路用 ssh2 Server 类真实覆盖；SFTP 上传下载因 ssh2-sftp-server 被权限系统拦截，用 fake 通道替代，真实 SFTP 全链路归任务 8 手工清单
+- 新增测试：exec_command 缺 connection_id 被 zod schema 拒绝（isError + 错误信息含字段名）
+- 提交：`97a09b0 feat: MCP server with 7 tools over stateless Streamable HTTP`（任务 6/7 代码）

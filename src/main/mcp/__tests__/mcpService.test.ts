@@ -264,6 +264,15 @@ describe('McpService Streamable HTTP + Bearer 鉴权', () => {
     expect(down.result?.content?.[0].text).toContain('"ok":true')
   })
 
+  it('exec_command 缺参数被 zod schema 拒绝', async () => {
+    const json = (await callTool('exec_command', { command: 'ls' })) as {
+      result?: { isError?: boolean; content?: { text: string }[] }
+    }
+    expect(json.result?.isError).toBe(true)
+    const text = json.result?.content?.[0].text ?? ''
+    expect(text).toContain('connection_id')
+  })
+
   it('未知路径返回 404，错误 JSON body 返回 400', async () => {
     const res404 = await fetch(`http://127.0.0.1:${port}/other`, {
       headers: { Authorization: `Bearer ${TOKEN}` }
