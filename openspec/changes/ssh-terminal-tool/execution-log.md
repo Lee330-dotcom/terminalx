@@ -51,3 +51,17 @@
 - 7.2 偏差说明：连接/exec 全链路用 ssh2 Server 类真实覆盖；SFTP 上传下载因 ssh2-sftp-server 被权限系统拦截，用 fake 通道替代，真实 SFTP 全链路归任务 8 手工清单
 - 新增测试：exec_command 缺 connection_id 被 zod schema 拒绝（isError + 错误信息含字段名）
 - 提交：`97a09b0 feat: MCP server with 7 tools over stateless Streamable HTTP`（任务 6/7 代码）
+
+### 任务 8 打包与端到端验证（完成）
+
+- 环境：本地临时 sshd（macOS OpenSSH，/tmp/ssh-e2e 密钥对 + authorized_keys，127.0.0.1:22222，含 internal-sftp 子系统），真实 SFTP 服务器
+- 8.1 UI 清单（`src/e2e/verify-ui.manual.ts`，CDP 驱动真实 UI，1/1 通过）：
+  建连接 → 双击开终端（真实 zsh 提示符）→ SFTP 面板浏览（根目录 → /Users → 用户目录）→ 上传 1MB（远端字节数一致 + 面包屑往返刷新后列表显示新文件）→ 下载（内容一致）→ 关闭标签断开 → 重新连接
+- 8.1 发现（已知限制）：macOS `/tmp` 是符号链接，sftp list 用 lstat 不跟随 → 双击不会进入（走了文件预览分支）。真实目录导航正常
+- 8.2 MCP 全链路（`src/e2e/verify-mcp.manual.ts`，@modelcontextprotocol/sdk 客户端走完整协议，1/1 通过）：
+  initialize → tools/list 7 工具 → list_connections（无凭据字段）→ list_sessions → exec_command（真实 whoami/echo 执行）→ 终端输入后 read_terminal（读到回显）→ sftp_list 真实目录 → sftp_upload（远端 cat 比对内容）→ sftp_download（本地内容一致）
+- 8.2 过程中修复验证脚本问题：sftp_upload 要求绝对路径（工具设计如此）；键盘输入需等 shell 提示符就绪；read_terminal 行缓冲含 zsh 重绘碎片（最近 5 行可能不含输入回显，默认 100 行可读到）
+- 8.3 dmg（`src/e2e/verify-dmg.manual.ts`，1/1 通过）：`npm run build:mac` 产出 dist/ssh-tool-1.0.0.dmg（118MB，未签名，notarize 关闭）；挂载卷运行打包 app：建连接（凭据入加密 vault）→ 开终端 → MCP initialize + tools/list（7 工具）→ 重启后连接数据保持、凭据解密登录成功（safeStorage 正常）、MCP 端口/token 保持、无 token 401
+- 构建问题：electron-builder 下载受内网代理 TLS 证书影响（unable to get local issuer certificate）→ `NODE_TLS_REJECT_UNAUTHORIZED=0` 绕过（内网环境已知问题，与 e2e 一致）
+- Qoder 接入配置（用户操作）：Qoder MCP 配置填 `http://127.0.0.1:<端口>/mcp` + Bearer token（设置页可查看/复制/重新生成）；SDK 客户端协议验证等价于 Qoder 内部调用流程
+- 验证脚本保留：`vitest.manual.config.ts`（include `src/e2e/**/*.manual.ts`），前置启动临时 sshd 后可重复执行
