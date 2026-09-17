@@ -36,11 +36,11 @@
 
 ## 6. MCP Server
 
-- [ ] 6.1 主进程 McpServer：StreamableHTTPServer 监听 127.0.0.1:<port>，Bearer token 中间件，启停接口；验证：curl 无 token 返回 401，带 token 完成 initialize 握手
-- [ ] 6.2 实现工具 `list_connections` / `list_sessions`：连接列表不含凭据、会话列表含标签标题；验证：curl 调用返回结构正确且无密码字段
-- [ ] 6.3 实现工具 `exec_command`（复用/临时连接、exec 通道、超时、50KB 截断带标记）；验证：curl 执行命令返回 stdout/stderr/exit code；输出超限时被截断；执行时交互终端无干扰
-- [ ] 6.4 实现工具 `read_terminal`（会话环形滚动缓冲 10000 行，读最近 N 行）；验证：终端执行多条命令后调用返回最近 N 行
-- [ ] 6.5 实现工具 `sftp_list` / `sftp_upload` / `sftp_download`（100MB 上限拒绝）；验证：curl 上传下载小文件成功，超过上限返回错误
+- [x] 6.1 主进程 McpServer：StreamableHTTPServer 监听 127.0.0.1:<port>，Bearer token 中间件，启停接口；验证：curl 无 token 返回 401，带 token 完成 initialize 握手
+- [x] 6.2 实现工具 `list_connections` / `list_sessions`：连接列表不含凭据、会话列表含标签标题；验证：curl 调用返回结构正确且无密码字段
+- [x] 6.3 实现工具 `exec_command`（复用/临时连接、exec 通道、超时、50KB 截断带标记）；验证：curl 执行命令返回 stdout/stderr/exit code；输出超限时被截断；执行时交互终端无干扰
+- [x] 6.4 实现工具 `read_terminal`（会话环形滚动缓冲 10000 行，读最近 N 行）；验证：终端执行多条命令后调用返回最近 N 行
+- [x] 6.5 实现工具 `sftp_list` / `sftp_upload` / `sftp_download`（100MB 上限拒绝）；验证：curl 上传下载小文件成功，超过上限返回错误
 
 ## 7. 测试
 

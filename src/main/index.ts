@@ -55,6 +55,9 @@ app.whenReady().then(() => {
 
   ctx = new AppContext(app.getPath('userData'))
   registerIpcHandlers(ctx)
+  void ctx.mcp.start().catch((err) => {
+    console.error('MCP 服务启动失败:', err)
+  })
 
   createWindow()
 

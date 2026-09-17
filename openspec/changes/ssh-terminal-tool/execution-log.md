@@ -24,4 +24,15 @@
 
 ### 任务 4/5 通用证据
 
-- 提交：待提交（任务 5 代码 + 任务 4 遗留的 e2e 重写）
+- 提交：`2c59de4 feat: SFTP file transfer with panel UI, transfer queue and cancel`（任务 5 代码 + 任务 4 遗留的 e2e 重写）
+
+### 任务 6 MCP Server（完成）
+
+- 新增 `src/main/mcp/mcpService.ts`：
+  - StreamableHTTPServerTransport 监听 127.0.0.1，Bearer token 鉴权（timingSafeEqual），设置变更/换 token 后自动 restart
+  - **无状态模式**：每个请求新建 McpServer + transport，响应 close 后销毁（初版复用 transport 导致第 2 个请求起全部 500，序列实验 200/500/500/500 定位，参考官方 simpleStatelessStreamableHttp.js 修复后 200/200/200/200）；非 POST 返回 405、未知路径 404、错误 body 400
+  - 7 个工具：list_connections（不含凭据字段）/ list_sessions / exec_command（50KB 截断：stdout 头尾各 24KB + stderr 头尾各 1KB + 省略标记）/ read_terminal / sftp_list / sftp_upload / sftp_download（经 uploadAndWait/downloadAndWait 复用 100MB 上限与取消）
+- 测试 `src/main/mcp/__tests__/mcpService.test.ts` 13/13 通过：截断 3 个、401（无/错 token）、initialize 握手、tools/list 7 工具、list_connections 无凭据（解析 JSON 断言无 password/privateKey*/passphrase 键）、list_sessions、exec 小/大、read_terminal、sftp 三工具、404/400、mcpEnabled=false 不启动
+- `npm test` → 54/54 通过；`npm run typecheck` 通过；`npm run test:e2e` 3/3 通过（回归）
+- 过程中发现的测试问题：list_connections 断言因 `"authType": "password"` 子串误判 → 改为解析后检查键；JSON.stringify 无空格 → 断言改 `"ok":true`
+- 未覆盖：真实 MCP 客户端（Qoder）接入验证 → 归入任务 8

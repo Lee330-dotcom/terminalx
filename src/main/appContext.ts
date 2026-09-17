@@ -8,6 +8,7 @@ import { SafeStorageProtector } from './safeStorageProtector'
 import { ConnectionManager } from './ssh/connectionManager'
 import { SessionManager, SessionEventSink } from './ssh/sessionManager'
 import { SftpService, TransferEventSink } from './ssh/sftpService'
+import { McpService } from './mcp/mcpService'
 import { buildConnectConfig } from './ssh/config'
 
 /** 应用级单例：存储与服务的统一入口。 */
@@ -18,6 +19,7 @@ export class AppContext {
   readonly ssh: ConnectionManager
   readonly sessions: SessionManager
   readonly sftp: SftpService
+  readonly mcp: McpService
 
   constructor(userDataDir: string) {
     this.settings = new SettingsStore(join(userDataDir, 'settings.json'))
@@ -57,5 +59,6 @@ export class AppContext {
       }
     }
     this.sftp = new SftpService(this.ssh, transferSink)
+    this.mcp = new McpService(this)
   }
 }

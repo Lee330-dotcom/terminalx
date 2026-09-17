@@ -20,8 +20,21 @@ export function registerIpcHandlers(ctx: AppContext): void {
 
   // ---- 设置 ----
   ipcMain.handle(IpcChannels.settingsGet, () => ctx.settings.get())
-  ipcMain.handle(IpcChannels.settingsUpdate, (_e, patch) => ctx.settings.update(patch))
-  ipcMain.handle(IpcChannels.settingsRegenerateToken, () => ctx.settings.regenerateToken())
+  ipcMain.handle(IpcChannels.settingsUpdate, async (_e, patch) => {
+    const result = await ctx.settings.update(patch)
+    // MCP 开关/端口/token 变化时重启服务
+    void ctx.mcp.restart().catch((err) => {
+      console.error('MCP 服务重启失败:', err)
+    })
+    return result
+  })
+  ipcMain.handle(IpcChannels.settingsRegenerateToken, async () => {
+    const token = await ctx.settings.regenerateToken()
+    void ctx.mcp.restart().catch((err) => {
+      console.error('MCP 服务重启失败:', err)
+    })
+    return token
+  })
 
   // ---- 终端会话 ----
   ipcMain.handle(IpcChannels.sessionOpen, (_e, connectionId) => ctx.sessions.open(connectionId))

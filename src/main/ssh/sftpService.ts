@@ -12,6 +12,7 @@ import {
 import { ConnectionManager } from './connectionManager'
 
 const MAX_READ_TEXT_BYTES = 1024 * 1024
+const MAX_TRANSFER_BYTES = 100 * 1024 * 1024
 const PROGRESS_INTERVAL_MS = 100
 
 export interface TransferEventSink {
@@ -68,6 +69,7 @@ export class SftpService {
   private queue: QueuedTransfer[] = []
   private active: QueuedTransfer | null = null
   private transfers = new Map<string, QueuedTransfer>()
+  private waiters = new Map<string, (r: TransferResult) => void>()
 
   constructor(
     private readonly ssh: ConnectionManager,
@@ -226,6 +228,27 @@ export class SftpService {
     })
   }
 
+  /** MCP 等需要同步结果的调用方：入队并等待完成。 */
+  async uploadAndWait(
+    connectionId: string,
+    localPath: string,
+    remotePath: string
+  ): Promise<TransferResult> {
+    return this.waitForTransfer(this.upload(connectionId, localPath, remotePath))
+  }
+
+  async downloadAndWait(
+    connectionId: string,
+    remotePath: string,
+    localPath: string
+  ): Promise<TransferResult> {
+    return this.waitForTransfer(this.download(connectionId, remotePath, localPath))
+  }
+
+  private waitForTransfer(id: string): Promise<TransferResult> {
+    return new Promise((resolvePromise) => this.waiters.set(id, resolvePromise))
+  }
+
   cancel(transferId: string): void {
     const transfer = this.transfers.get(transferId)
     if (!transfer) return
@@ -236,6 +259,9 @@ export class SftpService {
       this.queue = this.queue.filter((t) => t.id !== transferId)
       this.transfers.delete(transferId)
       this.sink.emitDone({ transferId, ok: false, error: '已取消' })
+      const waiter = this.waiters.get(transferId)
+      this.waiters.delete(transferId)
+      waiter?.({ ok: false, message: '已取消', bytesTransferred: 0 })
     }
   }
 
@@ -251,24 +277,27 @@ export class SftpService {
     if (this.active || this.queue.length === 0) return
     const transfer = this.queue.shift() as QueuedTransfer
     this.active = transfer
+    let result: TransferResult
     try {
-      const result = await this.runTransfer(transfer)
-      this.sink.emitDone({
-        transferId: transfer.id,
-        ok: result.ok,
-        error: result.ok ? undefined : result.message
-      })
+      result = await this.runTransfer(transfer)
     } catch (err) {
-      this.sink.emitDone({
-        transferId: transfer.id,
+      result = {
         ok: false,
-        error: err instanceof Error ? err.message : String(err)
-      })
-    } finally {
-      this.transfers.delete(transfer.id)
-      this.active = null
-      void this.pump()
+        message: err instanceof Error ? err.message : String(err),
+        bytesTransferred: 0
+      }
     }
+    this.sink.emitDone({
+      transferId: transfer.id,
+      ok: result.ok,
+      error: result.ok ? undefined : result.message
+    })
+    this.transfers.delete(transfer.id)
+    this.active = null
+    const waiter = this.waiters.get(transfer.id)
+    this.waiters.delete(transfer.id)
+    waiter?.(result)
+    void this.pump()
   }
 
   private async runTransfer(t: QueuedTransfer): Promise<TransferResult> {
@@ -309,6 +338,10 @@ export class SftpService {
 
         if (t.direction === 'upload') {
           const total = statSync(t.localPath).size
+          if (total > MAX_TRANSFER_BYTES) {
+            finish(false, `文件超过 ${MAX_TRANSFER_BYTES / 1024 / 1024}MB 传输上限`)
+            return
+          }
           const rs = createReadStream(t.localPath)
           const ws = sftp.createWriteStream(t.remotePath)
           t.streams = [rs, ws]
@@ -328,6 +361,10 @@ export class SftpService {
               return
             }
             const total = attrs.size
+            if (total > MAX_TRANSFER_BYTES) {
+              finish(false, `文件超过 ${MAX_TRANSFER_BYTES / 1024 / 1024}MB 传输上限`)
+              return
+            }
             const rs = sftp.createReadStream(t.remotePath)
             const ws = createWriteStream(t.localPath)
             t.streams = [rs, ws]
