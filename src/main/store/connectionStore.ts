@@ -4,7 +4,6 @@ import {
   ConnectionInput,
   ConnectionMeta,
   ConnectionWithStatus,
-  AuthType
 } from '@shared/types'
 import { readJson, writeJsonAtomic } from './jsonFile'
 import { CredentialVault, SecretPayload } from './credentialVault'
