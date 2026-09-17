@@ -1,7 +1,7 @@
 {
-  "name": "ssh-tool",
+  "name": "terminalx",
   "version": "1.0.0",
-  "description": "SSH desktop client with built-in MCP server",
+  "description": "terminalX - SSH desktop client with built-in MCP server",
   "main": "./out/main/index.js",
   "scripts": {
     "format": "prettier --write .",

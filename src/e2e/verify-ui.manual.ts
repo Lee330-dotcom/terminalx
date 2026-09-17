@@ -62,7 +62,7 @@ beforeAll(async () => {
   if (!(await sshdReady())) {
     throw new Error('临时 sshd 未运行，请先执行 /usr/sbin/sshd -f /tmp/ssh-e2e/sshd_config -E /tmp/ssh-e2e/sshd.log')
   }
-  userDataDir = await fs.mkdtemp(join(tmpdir(), 'ssh-tool-ui-verify-'))
+  userDataDir = await fs.mkdtemp(join(tmpdir(), 'terminalx-ui-verify-'))
   electron = spawn(
     ELECTRON_BIN,
     [APP_ROOT, `--remote-debugging-port=${DEBUG_PORT}`, `--user-data-dir=${userDataDir}`],

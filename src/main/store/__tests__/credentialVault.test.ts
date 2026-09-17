@@ -14,7 +14,7 @@ let dir: string
 let file: string
 
 beforeEach(async () => {
-  dir = await fs.mkdtemp(join(tmpdir(), 'ssh-tool-vault-'))
+  dir = await fs.mkdtemp(join(tmpdir(), 'terminalx-vault-'))
   file = join(dir, 'credentials.enc')
 })
 

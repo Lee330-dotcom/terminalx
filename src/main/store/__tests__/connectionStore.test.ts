@@ -14,7 +14,7 @@ let dir: string
 let store: ConnectionStore
 
 beforeEach(async () => {
-  dir = await fs.mkdtemp(join(tmpdir(), 'ssh-tool-conn-'))
+  dir = await fs.mkdtemp(join(tmpdir(), 'terminalx-conn-'))
   const vault = new CredentialVault(join(dir, 'credentials.enc'), fakeProtector)
   store = new ConnectionStore(join(dir, 'connections.json'), vault)
 })

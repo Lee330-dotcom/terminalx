@@ -8,7 +8,7 @@ let dir: string
 let store: SettingsStore
 
 beforeEach(async () => {
-  dir = await fs.mkdtemp(join(tmpdir(), 'ssh-tool-settings-'))
+  dir = await fs.mkdtemp(join(tmpdir(), 'terminalx-settings-'))
   store = new SettingsStore(join(dir, 'settings.json'))
 })
 

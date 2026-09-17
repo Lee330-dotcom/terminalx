@@ -162,7 +162,7 @@ describe('McpService Streamable HTTP + Bearer 鉴权', () => {
     )
     expect(ok.status).toBe(200)
     const result = (ok.json as { result?: { serverInfo?: { name: string } } }).result
-    expect(result?.serverInfo?.name).toBe('ssh-tool')
+    expect(result?.serverInfo?.name).toBe('terminalx')
   })
 
   it('tools/list 暴露 7 个工具', async () => {

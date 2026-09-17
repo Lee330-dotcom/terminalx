@@ -32,7 +32,7 @@ async function waitForPage(timeoutMs = 30000): Promise<void> {
 
 beforeAll(async () => {
   server = await startTestSshServer()
-  userDataDir = await fs.mkdtemp(join(tmpdir(), 'ssh-tool-e2e-'))
+  userDataDir = await fs.mkdtemp(join(tmpdir(), 'terminalx-e2e-'))
   electron = spawn(
     ELECTRON_BIN,
     [APP_ROOT, `--remote-debugging-port=${DEBUG_PORT}`, `--user-data-dir=${userDataDir}`],

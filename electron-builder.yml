@@ -1,5 +1,5 @@
-appId: com.liyuan.ssh-tool
-productName: SSH Tool
+appId: com.liyuan.terminalx
+productName: terminalX
 directories:
   buildResources: build
 files:

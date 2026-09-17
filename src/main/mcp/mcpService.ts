@@ -313,7 +313,7 @@ export class McpService {
     const body = await readJsonBody(req, res)
     if (body === null) return
 
-    const mcp = new McpServer({ name: 'ssh-tool', version: APP_VERSION })
+    const mcp = new McpServer({ name: 'terminalx', version: APP_VERSION })
     registerTools(mcp, this.ctx)
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined

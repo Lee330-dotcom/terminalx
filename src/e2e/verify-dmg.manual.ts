@@ -1,8 +1,8 @@
 /**
  * 任务 8.3 手动验证脚本（不进入默认 e2e include）：
- * 挂载 dist dmg → 运行打包后的 SSH Tool.app → 建连接/开终端/MCP 握手
+ * 挂载 dist dmg → 运行打包后的 terminalX.app → 建连接/开终端/MCP 握手
  * → 重启应用验证数据与凭据持久化（safeStorage + 加密 vault）
- * 前置：dist/ssh-tool-1.0.0.dmg 已构建；临时 sshd 运行中（/tmp/ssh-e2e，端口 22222）
+ * 前置：dist/terminalx-1.0.0.dmg 已构建；临时 sshd 运行中（/tmp/ssh-e2e，端口 22222）
  * 运行：npx vitest run --config vitest.manual.config.ts
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
@@ -14,9 +14,9 @@ import { join } from 'path'
 import puppeteer, { Browser } from 'puppeteer-core'
 
 const DEBUG_PORT = 9666
-const DMG = 'dist/ssh-tool-1.0.0.dmg'
+const DMG = 'dist/terminalx-1.0.0.dmg'
 const APP_BIN =
-  '/Volumes/SSH Tool 1.0.0-arm64/SSH Tool.app/Contents/MacOS/SSH Tool'
+  '/Volumes/terminalX 1.0.0-arm64/terminalX.app/Contents/MacOS/terminalX'
 const SSHD_PORT = 22222
 const CLIENT_KEY = '/tmp/ssh-e2e/client_key'
 
@@ -78,10 +78,13 @@ async function doubleClickTreeNode(page: import('puppeteer-core').Page, name: st
 }
 
 beforeAll(async () => {
-  execSync(`test -f ${DMG} || (hdiutil attach ${DMG} -nobrowse -readonly >/dev/null && echo mounted)`, {
-    stdio: 'pipe'
-  }).toString()
-  userDataDir = await fs.mkdtemp(join(tmpdir(), 'ssh-tool-dmg-verify-'))
+  // 确保 dmg 已挂载（已挂载时 attach 会失败，忽略）
+  try {
+    execSync(`hdiutil attach ${DMG} -nobrowse -readonly >/dev/null`, { stdio: 'pipe' })
+  } catch {
+    /* 已挂载 */
+  }
+  userDataDir = await fs.mkdtemp(join(tmpdir(), 'terminalx-dmg-verify-'))
   mcpPort = await getFreePort()
 }, 120000)
 
