@@ -198,6 +198,8 @@ export interface RendererApi {
   sftpCancel(transferId: string): Promise<void>
   onTransferProgress(cb: (ev: TransferProgressEvent) => void): () => void
   onTransferDone(cb: (ev: TransferDoneEvent) => void): () => void
+  /** 拖拽文件的真实磁盘路径（webUtils.getPathForFile）。 */
+  getPathForFile(file: unknown): string
   openFileDialog(): Promise<string | null>
   openDirectoryDialog(): Promise<string | null>
 }

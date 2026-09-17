@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import ConnectionTree from './components/ConnectionTree.vue'
 import ConnectionFormDialog from './components/ConnectionFormDialog.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import TerminalView from './components/TerminalView.vue'
+import SftpPanel from './components/SftpPanel.vue'
 import { useSessionStore } from './stores/sessions'
 import { useAppStore } from './stores/app'
 
@@ -14,6 +15,7 @@ const appStore = useAppStore()
 const formVisible = ref(false)
 const editingId = ref('')
 const settingsVisible = ref(false)
+const sftpVisible = ref(false)
 
 function openEdit(id: string): void {
   editingId.value = id
@@ -34,6 +36,11 @@ async function connect(connectionId: string): Promise<void> {
     ElMessage.error(`连接失败：${String(err)}`)
   }
 }
+
+const activeConnectionId = computed(() => {
+  const tab = sessionStore.tabs.find((t) => t.sessionId === sessionStore.activeSessionId)
+  return tab?.connectionId ?? null
+})
 </script>
 
 <template>
@@ -63,28 +70,39 @@ async function connect(connectionId: string): Promise<void> {
             <span class="tab-title">{{ tab.title }}</span>
             <span class="tab-close" @click.stop="sessionStore.closeSession(tab.sessionId)">×</span>
           </div>
+          <button class="sftp-toggle" :class="{ on: sftpVisible }" @click="sftpVisible = !sftpVisible">
+            文件
+          </button>
         </div>
         <div class="tab-body">
-          <template v-for="tab in sessionStore.tabs" :key="tab.sessionId">
-            <div
-              v-show="tab.sessionId === sessionStore.activeSessionId"
-              class="tab-panel"
-            >
-              <div v-if="tab.status === 'error'" class="state-panel error">
-                <p>连接失败：{{ tab.errorMessage }}</p>
-                <el-button type="primary" @click="sessionStore.reconnect(tab.sessionId)">
-                  重新连接
-                </el-button>
+          <div class="panel-main">
+            <template v-for="tab in sessionStore.tabs" :key="tab.sessionId">
+              <div
+                v-show="tab.sessionId === sessionStore.activeSessionId"
+                class="tab-panel"
+              >
+                <div v-if="tab.status === 'error'" class="state-panel error">
+                  <p>连接失败：{{ tab.errorMessage }}</p>
+                  <el-button type="primary" @click="sessionStore.reconnect(tab.sessionId)">
+                    重新连接
+                  </el-button>
+                </div>
+                <div v-else-if="tab.status === 'disconnected'" class="state-panel">
+                  <p>连接已断开</p>
+                  <el-button type="primary" @click="sessionStore.reconnect(tab.sessionId)">
+                    重新连接
+                  </el-button>
+                </div>
+                <TerminalView v-else :session-id="tab.sessionId" />
               </div>
-              <div v-else-if="tab.status === 'disconnected'" class="state-panel">
-                <p>连接已断开</p>
-                <el-button type="primary" @click="sessionStore.reconnect(tab.sessionId)">
-                  重新连接
-                </el-button>
-              </div>
-              <TerminalView v-else :session-id="tab.sessionId" />
-            </div>
-          </template>
+            </template>
+          </div>
+          <SftpPanel
+            v-if="sftpVisible && activeConnectionId"
+            :key="activeConnectionId"
+            class="sftp-panel"
+            :connection-id="activeConnectionId"
+          />
         </div>
       </div>
     </main>
@@ -167,10 +185,35 @@ async function connect(connectionId: string): Promise<void> {
 .tab-close:hover {
   color: #f56c6c;
 }
+.sftp-toggle {
+  margin-left: auto;
+  padding: 4px 14px;
+  border: none;
+  background: transparent;
+  color: #606266;
+  font-size: 13px;
+  cursor: pointer;
+  border-left: 1px solid #e4e7ed;
+  white-space: nowrap;
+}
+.sftp-toggle:hover {
+  background: #e9e9eb;
+}
+.sftp-toggle.on {
+  color: #409eff;
+  font-weight: 600;
+}
 .tab-body {
   flex: 1;
   display: flex;
+  flex-direction: row;
+  min-height: 0;
+}
+.panel-main {
+  flex: 1;
+  display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
 }
 .tab-panel {
@@ -179,6 +222,10 @@ async function connect(connectionId: string): Promise<void> {
   flex-direction: column;
   min-height: 0;
   background: #1e1e1e;
+}
+.sftp-panel {
+  width: 460px;
+  flex-shrink: 0;
 }
 .state-panel {
   flex: 1;

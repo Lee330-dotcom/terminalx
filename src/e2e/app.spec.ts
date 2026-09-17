@@ -133,4 +133,31 @@ describe('应用端到端（真实 Electron + 本地测试 SSH 服务器）', ()
     expect(errText).toContain('认证失败')
     expect(errText).toContain('重新连接')
   })
+
+  it('文件面板可打开；测试服务器不支持 SFTP 时优雅报错', async () => {
+    const page = await getPage()
+    await createConnection(page, 'e2e-sftp', 'test-pass')
+    await doubleClickTreeNode(page, 'e2e-sftp')
+    await page.waitForFunction(
+      () => document.querySelector('.xterm-rows')?.textContent?.includes('welcome to test server'),
+      { timeout: 15000 }
+    )
+
+    await page.click('.sftp-toggle')
+
+    // 面板渲染，路径栏显示根目录
+    await page.waitForFunction(
+      () => document.querySelector('.sftp-panel')?.textContent?.includes('/'),
+      { timeout: 15000 }
+    )
+    const panelText = await page.evaluate(() => document.querySelector('.sftp-panel')?.textContent)
+    expect(panelText).toContain('上传')
+    expect(panelText).toContain('新建文件夹')
+
+    // 本地测试服务器未实现 sftp 子系统，列表失败应有提示
+    await page.waitForFunction(
+      () => document.querySelector('.el-message')?.textContent?.includes('读取目录失败'),
+      { timeout: 15000 }
+    )
+  })
 })

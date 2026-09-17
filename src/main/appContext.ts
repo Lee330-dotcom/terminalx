@@ -7,6 +7,7 @@ import { ConnectionStore } from './store/connectionStore'
 import { SafeStorageProtector } from './safeStorageProtector'
 import { ConnectionManager } from './ssh/connectionManager'
 import { SessionManager, SessionEventSink } from './ssh/sessionManager'
+import { SftpService, TransferEventSink } from './ssh/sftpService'
 import { buildConnectConfig } from './ssh/config'
 
 /** 应用级单例：存储与服务的统一入口。 */
@@ -16,6 +17,7 @@ export class AppContext {
   readonly connections: ConnectionStore
   readonly ssh: ConnectionManager
   readonly sessions: SessionManager
+  readonly sftp: SftpService
 
   constructor(userDataDir: string) {
     this.settings = new SettingsStore(join(userDataDir, 'settings.json'))
@@ -41,5 +43,19 @@ export class AppContext {
       }
     }
     this.sessions = new SessionManager(this.ssh, sink)
+
+    const transferSink: TransferEventSink = {
+      emitProgress: (ev) => {
+        for (const win of BrowserWindow.getAllWindows()) {
+          win.webContents.send(IpcChannels.evTransferProgress, ev)
+        }
+      },
+      emitDone: (ev) => {
+        for (const win of BrowserWindow.getAllWindows()) {
+          win.webContents.send(IpcChannels.evTransferDone, ev)
+        }
+      }
+    }
+    this.sftp = new SftpService(this.ssh, transferSink)
   }
 }

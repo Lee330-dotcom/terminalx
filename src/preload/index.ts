@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import {
   IpcChannels,
@@ -64,6 +64,7 @@ const api: RendererApi = {
     ipcRenderer.on(IpcChannels.evTransferDone, listener)
     return () => ipcRenderer.removeListener(IpcChannels.evTransferDone, listener)
   },
+  getPathForFile: (file) => webUtils.getPathForFile(file as File),
   openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
   openDirectoryDialog: () => ipcRenderer.invoke('dialog:open-directory')
 }

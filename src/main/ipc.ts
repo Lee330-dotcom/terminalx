@@ -35,6 +35,30 @@ export function registerIpcHandlers(ctx: AppContext): void {
     ctx.sessions.resize(sessionId, cols, rows)
   })
 
+  // ---- SFTP ----
+  ipcMain.handle(IpcChannels.sftpList, (_e, connectionId, path) =>
+    ctx.sftp.list(connectionId, path)
+  )
+  ipcMain.handle(IpcChannels.sftpMkdir, (_e, connectionId, path) =>
+    ctx.sftp.mkdir(connectionId, path)
+  )
+  ipcMain.handle(IpcChannels.sftpDelete, (_e, connectionId, path) =>
+    ctx.sftp.delete(connectionId, path)
+  )
+  ipcMain.handle(IpcChannels.sftpRename, (_e, connectionId, from, to) =>
+    ctx.sftp.rename(connectionId, from, to)
+  )
+  ipcMain.handle(IpcChannels.sftpReadText, (_e, connectionId, path) =>
+    ctx.sftp.readText(connectionId, path)
+  )
+  ipcMain.handle(IpcChannels.sftpUpload, (_e, connectionId, localPath, remotePath) =>
+    ctx.sftp.upload(connectionId, localPath, remotePath)
+  )
+  ipcMain.handle(IpcChannels.sftpDownload, (_e, connectionId, remotePath, localPath) =>
+    ctx.sftp.download(connectionId, remotePath, localPath)
+  )
+  ipcMain.handle(IpcChannels.sftpCancel, (_e, transferId) => ctx.sftp.cancel(transferId))
+
   // ---- 文件对话框 ----
   ipcMain.handle('dialog:open-file', async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)
