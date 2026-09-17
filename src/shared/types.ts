@@ -119,6 +119,7 @@ export const IpcChannels = {
   sessionClose: 'session:close',
   sessionInput: 'session:input',
   sessionResize: 'session:resize',
+  sessionReconnect: 'session:reconnect',
   sessionList: 'session:list',
   sessionStatus: 'session:status',
   sftpOpen: 'sftp:open',
@@ -181,6 +182,7 @@ export interface RendererApi {
   regenerateToken(): Promise<string>
   openSession(connectionId: string): Promise<SessionOpenResult>
   closeSession(sessionId: string): Promise<void>
+  reconnectSession(sessionId: string): Promise<void>
   sendInput(sessionId: string, data: Uint8Array): void
   resizeSession(sessionId: string, cols: number, rows: number): void
   listSessions(): Promise<SessionInfo[]>

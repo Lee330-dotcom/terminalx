@@ -32,13 +32,13 @@ export const useSessionStore = defineStore('sessions', {
         }
       })
     },
-    async openSession(connectionId: string): Promise<void> {
+    async openSession(connectionId: string, title?: string): Promise<void> {
       this.ensureStatusListener()
       const { sessionId } = await window.api.openSession(connectionId)
       this.tabs.push({
         sessionId,
         connectionId,
-        title: `连接 ${this.tabs.length + 1}`,
+        title: title ?? connectionId,
         status: 'connecting'
       })
       this.activeSessionId = sessionId
@@ -59,7 +59,7 @@ export const useSessionStore = defineStore('sessions', {
       if (!tab) return
       tab.status = 'connecting'
       tab.errorMessage = undefined
-      await window.api.openSession(tab.connectionId)
+      await window.api.reconnectSession(sessionId)
     }
   }
 })

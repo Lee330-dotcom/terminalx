@@ -24,6 +24,7 @@ const api: RendererApi = {
   regenerateToken: () => ipcRenderer.invoke(IpcChannels.settingsRegenerateToken),
   openSession: (connectionId) => ipcRenderer.invoke(IpcChannels.sessionOpen, connectionId),
   closeSession: (sessionId) => ipcRenderer.invoke(IpcChannels.sessionClose, sessionId),
+  reconnectSession: (sessionId) => ipcRenderer.invoke(IpcChannels.sessionReconnect, sessionId),
   sendInput: (sessionId, data) => ipcRenderer.send(IpcChannels.sessionInput, sessionId, data),
   resizeSession: (sessionId, cols, rows) =>
     ipcRenderer.send(IpcChannels.sessionResize, sessionId, cols, rows),

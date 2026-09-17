@@ -23,6 +23,18 @@ export function registerIpcHandlers(ctx: AppContext): void {
   ipcMain.handle(IpcChannels.settingsUpdate, (_e, patch) => ctx.settings.update(patch))
   ipcMain.handle(IpcChannels.settingsRegenerateToken, () => ctx.settings.regenerateToken())
 
+  // ---- 终端会话 ----
+  ipcMain.handle(IpcChannels.sessionOpen, (_e, connectionId) => ctx.sessions.open(connectionId))
+  ipcMain.handle(IpcChannels.sessionClose, (_e, sessionId) => ctx.sessions.close(sessionId))
+  ipcMain.handle(IpcChannels.sessionReconnect, (_e, sessionId) => ctx.sessions.reconnect(sessionId))
+  ipcMain.handle(IpcChannels.sessionList, () => ctx.sessions.list())
+  ipcMain.on(IpcChannels.sessionInput, (_e, sessionId: string, data: Uint8Array) => {
+    ctx.sessions.input(sessionId, data)
+  })
+  ipcMain.on(IpcChannels.sessionResize, (_e, sessionId: string, cols: number, rows: number) => {
+    ctx.sessions.resize(sessionId, cols, rows)
+  })
+
   // ---- 文件对话框 ----
   ipcMain.handle('dialog:open-file', async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)

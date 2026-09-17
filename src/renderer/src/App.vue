@@ -4,9 +4,12 @@ import { ElMessage } from 'element-plus'
 import ConnectionTree from './components/ConnectionTree.vue'
 import ConnectionFormDialog from './components/ConnectionFormDialog.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
+import TerminalView from './components/TerminalView.vue'
 import { useSessionStore } from './stores/sessions'
+import { useAppStore } from './stores/app'
 
 const sessionStore = useSessionStore()
+const appStore = useAppStore()
 
 const formVisible = ref(false)
 const editingId = ref('')
@@ -25,7 +28,8 @@ function cloneConnection(id: string): void {
 
 async function connect(connectionId: string): Promise<void> {
   try {
-    await sessionStore.openSession(connectionId)
+    const conn = appStore.connections.find((c) => c.id === connectionId)
+    await sessionStore.openSession(connectionId, conn?.name)
   } catch (err) {
     ElMessage.error(`连接失败：${String(err)}`)
   }
@@ -61,13 +65,26 @@ async function connect(connectionId: string): Promise<void> {
           </div>
         </div>
         <div class="tab-body">
-          <div v-if="sessionStore.activeTab?.status === 'error'" class="error-panel">
-            <p>连接失败：{{ sessionStore.activeTab.errorMessage }}</p>
-            <el-button type="primary" @click="sessionStore.reconnect(sessionStore.activeSessionId!)">
-              重新连接
-            </el-button>
-          </div>
-          <p v-else class="placeholder">终端渲染将在下一步接入（会话 #{{ sessionStore.activeSessionId }}）</p>
+          <template v-for="tab in sessionStore.tabs" :key="tab.sessionId">
+            <div
+              v-show="tab.sessionId === sessionStore.activeSessionId"
+              class="tab-panel"
+            >
+              <div v-if="tab.status === 'error'" class="state-panel error">
+                <p>连接失败：{{ tab.errorMessage }}</p>
+                <el-button type="primary" @click="sessionStore.reconnect(tab.sessionId)">
+                  重新连接
+                </el-button>
+              </div>
+              <div v-else-if="tab.status === 'disconnected'" class="state-panel">
+                <p>连接已断开</p>
+                <el-button type="primary" @click="sessionStore.reconnect(tab.sessionId)">
+                  重新连接
+                </el-button>
+              </div>
+              <TerminalView v-else :session-id="tab.sessionId" />
+            </div>
+          </template>
         </div>
       </div>
     </main>
@@ -156,17 +173,24 @@ async function connect(connectionId: string): Promise<void> {
   flex-direction: column;
   min-height: 0;
 }
-.error-panel {
+.tab-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #1e1e1e;
+}
+.state-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 12px;
-  color: #f56c6c;
-}
-.placeholder {
-  margin: 12px;
   color: #909399;
+  background: #fff;
+}
+.state-panel.error {
+  color: #f56c6c;
 }
 </style>
