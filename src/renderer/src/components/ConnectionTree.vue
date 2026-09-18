@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Collection, Clock, Folder, Star, TrendCharts } from '@element-plus/icons-vue'
 import { useAppStore } from '../stores/app'
 import { useSessionStore } from '../stores/sessions'
+import { t } from '../i18n'
 import type { ConnectionFilter } from '../filter'
 
 const props = defineProps<{
@@ -51,10 +52,10 @@ window.addEventListener('click', hideMenu)
 
 async function renameGroup(): Promise<void> {
   try {
-    const { value } = await ElMessageBox.prompt('新的分组名称', '重命名分组', {
+    const { value } = await ElMessageBox.prompt(t('tree.newGroupName'), t('tree.renameGroup'), {
       inputValue: menu.label,
       inputPattern: /\S+/,
-      inputErrorMessage: '名称不能为空'
+      inputErrorMessage: t('common.nameNotEmpty')
     })
     await window.api.updateGroup(menu.groupId, value)
     await store.refresh()
@@ -65,11 +66,15 @@ async function renameGroup(): Promise<void> {
 
 async function deleteGroup(): Promise<void> {
   try {
-    await ElMessageBox.confirm(`删除分组「${menu.label}」？组内连接将移至未分组。`, '删除确认', {
-      type: 'warning'
-    })
+    await ElMessageBox.confirm(
+      t('tree.deleteGroupConfirm', { name: menu.label }),
+      t('common.confirmDelete'),
+      {
+        type: 'warning'
+      }
+    )
     await store.deleteGroup(menu.groupId)
-    ElMessage.success('分组已删除')
+    ElMessage.success(t('tree.groupDeleted'))
     if (props.filter.kind === 'group' && props.filter.groupId === menu.groupId) {
       emit('changeFilter', { kind: 'all' })
     }
@@ -89,7 +94,7 @@ onMounted(() => store.refresh())
         :class="{ active: isActive({ kind: 'all' }) }"
         @click="emit('changeFilter', { kind: 'all' })"
       >
-        <span class="nav-label">全部</span>
+        <span class="nav-label">{{ t('tree.all') }}</span>
         <span class="nav-count">{{ store.connections.length }}</span>
       </div>
       <div class="nav-children">
@@ -99,7 +104,7 @@ onMounted(() => store.refresh())
           @click="emit('changeFilter', { kind: 'favorite' })"
         >
           <el-icon class="nav-icon star"><Star /></el-icon>
-          <span class="nav-label">收藏</span>
+          <span class="nav-label">{{ t('tree.favorite') }}</span>
           <span class="nav-count">{{ favoriteCount }}</span>
         </div>
         <div
@@ -108,7 +113,7 @@ onMounted(() => store.refresh())
           @click="emit('changeFilter', { kind: 'recent' })"
         >
           <el-icon class="nav-icon"><Clock /></el-icon>
-          <span class="nav-label">最近</span>
+          <span class="nav-label">{{ t('tree.recent') }}</span>
           <span class="nav-count">{{ recentIds.length }}</span>
         </div>
         <div
@@ -117,7 +122,7 @@ onMounted(() => store.refresh())
           @click="emit('changeFilter', { kind: 'frequent' })"
         >
           <el-icon class="nav-icon"><TrendCharts /></el-icon>
-          <span class="nav-label">常用</span>
+          <span class="nav-label">{{ t('tree.frequent') }}</span>
           <span class="nav-count">{{ frequentIds.length }}</span>
         </div>
       </div>
@@ -126,7 +131,7 @@ onMounted(() => store.refresh())
     <div class="nav-section">
       <div class="nav-caption">
         <el-icon class="nav-icon"><Collection /></el-icon>
-        <span>分组</span>
+        <span>{{ t('tree.groups') }}</span>
       </div>
       <div
         v-for="g in store.groups"
@@ -142,11 +147,11 @@ onMounted(() => store.refresh())
           store.connections.filter((c) => c.groupId === g.id).length
         }}</span>
       </div>
-      <div v-if="store.groups.length === 0" class="nav-hint">暂无分组</div>
+      <div v-if="store.groups.length === 0" class="nav-hint">{{ t('tree.noGroups') }}</div>
     </div>
 
     <div class="nav-footer">
-      <span class="footer-btn" @click="emit('openSettings')">设置</span>
+      <span class="footer-btn" @click="emit('openSettings')">{{ t('tree.settings') }}</span>
     </div>
 
     <div
@@ -155,8 +160,8 @@ onMounted(() => store.refresh())
       :style="{ left: `${menu.x}px`, top: `${menu.y}px` }"
       @click.stop
     >
-      <div class="menu-item" @click="renameGroup">重命名</div>
-      <div class="menu-item danger" @click="deleteGroup">删除分组</div>
+      <div class="menu-item" @click="renameGroup">{{ t('common.rename') }}</div>
+      <div class="menu-item danger" @click="deleteGroup">{{ t('tree.deleteGroupTitle') }}</div>
     </div>
   </div>
 </template>
@@ -166,12 +171,12 @@ onMounted(() => store.refresh())
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #111;
+  background: var(--tx-panel);
   overflow: hidden;
 }
 .nav-section {
   padding: 8px;
-  border-bottom: 1px solid #1d1d1d;
+  border-bottom: 1px solid var(--tx-border);
   overflow-y: auto;
 }
 .all-section {
@@ -202,23 +207,23 @@ onMounted(() => store.refresh())
   white-space: nowrap;
 }
 .nav-item:hover {
-  background: #1a1a1a;
+  background: var(--tx-hover);
   color: var(--tx-text);
 }
 .nav-item.active {
-  background: #16241c;
-  color: #34d399;
+  background: color-mix(in srgb, var(--tx-green) 14%, transparent);
+  color: var(--tx-green-hover);
 }
 .nav-children {
   padding-left: 12px;
 }
 .nav-icon {
   font-size: 14px;
-  color: #555;
+  color: var(--tx-text-3);
   flex-shrink: 0;
 }
 .nav-item.active .nav-icon {
-  color: #34d399;
+  color: var(--tx-green-hover);
 }
 .nav-icon.star {
   color: #f5c518;
@@ -231,13 +236,13 @@ onMounted(() => store.refresh())
 .nav-count {
   font-size: 11px;
   color: var(--tx-text-3);
-  background: #1d1d1d;
+  background: var(--tx-fill);
   padding: 0 7px;
   border-radius: 8px;
 }
 .nav-item.active .nav-count {
-  background: #1f3d2e;
-  color: #34d399;
+  background: color-mix(in srgb, var(--tx-green) 22%, transparent);
+  color: var(--tx-green-hover);
 }
 .nav-hint {
   padding: 6px 10px;
@@ -247,7 +252,7 @@ onMounted(() => store.refresh())
 .nav-footer {
   flex-shrink: 0;
   padding: 8px;
-  border-top: 1px solid #1d1d1d;
+  border-top: 1px solid var(--tx-border);
 }
 .footer-btn {
   display: block;
@@ -258,14 +263,14 @@ onMounted(() => store.refresh())
   cursor: pointer;
 }
 .footer-btn:hover {
-  background: #1a1a1a;
+  background: var(--tx-hover);
   color: var(--tx-text);
 }
 .context-menu {
   position: fixed;
   z-index: 3000;
-  background: #1c1c1c;
-  border: 1px solid #2a2a2a;
+  background: var(--tx-card);
+  border: 1px solid var(--tx-border);
   border-radius: 8px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
   padding: 4px 0;
@@ -278,7 +283,7 @@ onMounted(() => store.refresh())
   cursor: pointer;
 }
 .menu-item:hover {
-  background: #262626;
+  background: var(--tx-hover);
 }
 .menu-item.danger {
   color: #f87171;

@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { SftpEntry } from '@shared/types'
 import { useTransferStore } from '../stores/transfers'
+import { t } from '../i18n'
 
 const props = defineProps<{ connectionId: string }>()
 
@@ -27,7 +28,7 @@ async function refresh(): Promise<void> {
     const result = await window.api.sftpList(props.connectionId, currentPath.value)
     entries.value = result.entries
   } catch (err) {
-    ElMessage.error(`读取目录失败：${String(err)}`)
+    ElMessage.error(t('sftp.listFailed', { err: String(err) }))
     entries.value = []
   } finally {
     loading.value = false
@@ -57,7 +58,7 @@ function goTo(path: string): void {
 async function preview(entry: SftpEntry): Promise<void> {
   if (entry.isDirectory) return
   if (entry.size > 2 * 1024 * 1024) {
-    ElMessage.warning('文件过大，仅支持预览不超过 2MB 的文本文件')
+    ElMessage.warning(t('sftp.fileTooLarge'))
     return
   }
   try {
@@ -65,16 +66,20 @@ async function preview(entry: SftpEntry): Promise<void> {
     previewText.value = await window.api.sftpReadText(props.connectionId, entry.path)
     previewVisible.value = true
   } catch (err) {
-    ElMessage.error(`读取文件失败：${String(err)}`)
+    ElMessage.error(t('sftp.readFailed', { err: String(err) }))
   }
 }
 
 async function createFolder(): Promise<void> {
   try {
-    const { value } = await ElMessageBox.prompt('输入文件夹名称', '新建文件夹', {
-      inputPattern: /^[^/]+$/,
-      inputErrorMessage: '名称不能包含 /'
-    })
+    const { value } = await ElMessageBox.prompt(
+      t('sftp.folderNamePrompt'),
+      t('sftp.folderNameTitle'),
+      {
+        inputPattern: /^[^/]+$/,
+        inputErrorMessage: t('sftp.nameNoSlash')
+      }
+    )
     await window.api.sftpMkdir(props.connectionId, joinPosix(currentPath.value, value))
     await refresh()
   } catch {
@@ -84,10 +89,10 @@ async function createFolder(): Promise<void> {
 
 async function renameEntry(entry: SftpEntry): Promise<void> {
   try {
-    const { value } = await ElMessageBox.prompt('输入新名称', '重命名', {
+    const { value } = await ElMessageBox.prompt(t('sftp.newNamePrompt'), t('sftp.renameTitle'), {
       inputValue: entry.name,
       inputPattern: /^[^/]+$/,
-      inputErrorMessage: '名称不能包含 /'
+      inputErrorMessage: t('sftp.nameNoSlash')
     })
     if (value === entry.name) return
     await window.api.sftpRename(props.connectionId, entry.path, joinPosix(currentPath.value, value))
@@ -100,9 +105,16 @@ async function renameEntry(entry: SftpEntry): Promise<void> {
 async function deleteEntry(entry: SftpEntry): Promise<void> {
   try {
     await ElMessageBox.confirm(
-      `确定删除 ${entry.name}${entry.isDirectory ? ' 目录' : ''}？此操作不可恢复。`,
-      '删除确认',
-      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+      t('sftp.deleteConfirm', {
+        name: entry.name,
+        suffix: entry.isDirectory ? t('sftp.deleteDirSuffix') : ''
+      }),
+      t('common.confirmDelete'),
+      {
+        type: 'warning',
+        confirmButtonText: t('common.delete'),
+        cancelButtonText: t('common.cancel')
+      }
     )
     await window.api.sftpDelete(props.connectionId, entry.path)
     if (selected.value?.path === entry.path) selected.value = null
@@ -215,7 +227,9 @@ watch(
     @drop.prevent="onDrop"
   >
     <div class="sftp-header">
-      <el-button size="small" text @click="goUp" :disabled="currentPath === '/'">⬆ 上级</el-button>
+      <el-button size="small" text @click="goUp" :disabled="currentPath === '/'">{{
+        t('sftp.up')
+      }}</el-button>
       <div class="path-bar">
         <span class="path-sep">/</span>
         <template v-for="part in pathParts" :key="part.path">
@@ -223,17 +237,19 @@ watch(
           <span class="path-sep">/</span>
         </template>
       </div>
-      <el-button size="small" text @click="refresh">刷新</el-button>
+      <el-button size="small" text @click="refresh">{{ t('sftp.refresh') }}</el-button>
     </div>
     <div class="sftp-toolbar">
-      <el-button size="small" type="primary" @click="uploadFiles">上传</el-button>
-      <el-button size="small" @click="createFolder">新建文件夹</el-button>
-      <el-button size="small" :disabled="!selected" @click="downloadSelected">下载</el-button>
-      <el-button size="small" :disabled="!selected" @click="renameEntry(selected!)"
-        >重命名</el-button
-      >
+      <el-button size="small" type="primary" @click="uploadFiles">{{ t('sftp.upload') }}</el-button>
+      <el-button size="small" @click="createFolder">{{ t('sftp.newFolder') }}</el-button>
+      <el-button size="small" :disabled="!selected" @click="downloadSelected">{{
+        t('sftp.download')
+      }}</el-button>
+      <el-button size="small" :disabled="!selected" @click="renameEntry(selected!)">{{
+        t('common.rename')
+      }}</el-button>
       <el-button size="small" type="danger" :disabled="!selected" @click="deleteEntry(selected!)">
-        删除
+        {{ t('common.delete') }}
       </el-button>
     </div>
     <div class="sftp-list">
@@ -245,9 +261,9 @@ watch(
         highlight-current-row
         @row-click="onRowClick"
         @row-dblclick="onRowDblclick"
-        empty-text="空目录"
+        :empty-text="t('sftp.emptyDir')"
       >
-        <el-table-column label="名称" min-width="160">
+        <el-table-column :label="t('table.name')" min-width="160">
           <template #default="{ row }">
             <span class="entry-name">
               <span class="entry-icon">{{ row.isDirectory ? '📁' : '📄' }}</span>
@@ -255,34 +271,36 @@ watch(
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="大小" width="80">
+        <el-table-column :label="t('sftp.size')" width="80">
           <template #default="{ row }">
             <span v-if="!row.isDirectory">{{ formatSize(row.size) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="权限" width="100">
+        <el-table-column :label="t('sftp.permissions')" width="100">
           <template #default="{ row }">{{ formatMode(row.mode, row.isDirectory) }}</template>
         </el-table-column>
-        <el-table-column label="修改时间" width="150">
+        <el-table-column :label="t('sftp.mtime')" width="150">
           <template #default="{ row }">{{ formatTime(row.mtime) }}</template>
         </el-table-column>
       </el-table>
     </div>
     <div v-if="runningTransfers.length > 0" class="transfer-list">
-      <div v-for="t in runningTransfers" :key="t.id" class="transfer-item">
-        <span class="transfer-name" :title="t.remotePath">{{ t.name }}</span>
+      <div v-for="tr in runningTransfers" :key="tr.id" class="transfer-item">
+        <span class="transfer-name" :title="tr.remotePath">{{ tr.name }}</span>
         <el-progress
           class="transfer-progress"
-          :percentage="t.total > 0 ? Math.min(100, Math.round((t.transferred / t.total) * 100)) : 0"
+          :percentage="
+            tr.total > 0 ? Math.min(100, Math.round((tr.transferred / tr.total) * 100)) : 0
+          "
           :stroke-width="6"
           :show-text="false"
         />
         <span class="transfer-size">
-          {{ formatSize(t.transferred) }}{{ t.total > 0 ? ` / ${formatSize(t.total)}` : '' }}
+          {{ formatSize(tr.transferred) }}{{ tr.total > 0 ? ` / ${formatSize(tr.total)}` : '' }}
         </span>
-        <el-button size="small" text type="danger" @click="transferStore.cancel(t.id)"
-          >取消</el-button
-        >
+        <el-button size="small" text type="danger" @click="transferStore.cancel(tr.id)">{{
+          t('common.cancel')
+        }}</el-button>
       </div>
     </div>
 
@@ -297,8 +315,8 @@ watch(
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #0d0d0d;
-  border-left: 1px solid #1f1f1f;
+  background: var(--tx-bg);
+  border-left: 1px solid var(--tx-border);
   position: relative;
 }
 .sftp-panel.drag-over::after {
@@ -306,21 +324,24 @@ watch(
   position: absolute;
   inset: 0;
   background: rgba(16, 185, 129, 0.08);
-  border: 2px dashed #10b981;
+  border: 2px dashed var(--tx-green);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #34d399;
+  color: var(--tx-green-hover);
   font-size: 14px;
   z-index: 10;
   pointer-events: none;
+}
+:lang(en-US) .sftp-panel.drag-over::after {
+  content: 'Release to upload to current directory';
 }
 .sftp-header {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  border-bottom: 1px solid #1f1f1f;
+  border-bottom: 1px solid var(--tx-border);
 }
 .path-bar {
   flex: 1;
@@ -332,22 +353,22 @@ watch(
   white-space: nowrap;
 }
 .path-part {
-  color: #34d399;
+  color: var(--tx-green-hover);
   cursor: pointer;
   padding: 2px 4px;
   border-radius: 3px;
 }
 .path-part:hover {
-  background: #16241c;
+  background: color-mix(in srgb, var(--tx-green) 14%, transparent);
 }
 .path-sep {
-  color: #4a4a4a;
+  color: var(--tx-text-3);
 }
 .sftp-toolbar {
   display: flex;
   gap: 6px;
   padding: 6px 8px;
-  border-bottom: 1px solid #1f1f1f;
+  border-bottom: 1px solid var(--tx-border);
 }
 .sftp-list {
   flex: 1;
@@ -360,11 +381,11 @@ watch(
   cursor: pointer;
 }
 .transfer-list {
-  border-top: 1px solid #1f1f1f;
+  border-top: 1px solid var(--tx-border);
   padding: 6px 8px;
   max-height: 160px;
   overflow-y: auto;
-  background: #111;
+  background: var(--tx-panel);
 }
 .transfer-item {
   display: flex;
@@ -393,7 +414,7 @@ watch(
   margin: 0;
   font-size: 12px;
   line-height: 1.5;
-  background: #161616;
+  background: var(--tx-fill);
   color: var(--tx-text);
   padding: 12px;
   border-radius: 4px;

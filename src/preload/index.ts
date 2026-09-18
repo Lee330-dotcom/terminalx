@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import type { IpcRendererEvent } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import {
   IpcChannels,
@@ -17,6 +18,8 @@ const api: RendererApi = {
   deleteConnection: (id) => ipcRenderer.invoke(IpcChannels.connDelete, id),
   toggleFavorite: (id) => ipcRenderer.invoke(IpcChannels.connToggleFavorite, id),
   probeConnections: (targets) => ipcRenderer.invoke(IpcChannels.connProbe, targets),
+  testConnection: (input, existingId) =>
+    ipcRenderer.invoke(IpcChannels.connTest, input, existingId),
   listGroups: () => ipcRenderer.invoke(IpcChannels.groupList),
   createGroup: (name) => ipcRenderer.invoke(IpcChannels.groupCreate, name),
   updateGroup: (id, name) => ipcRenderer.invoke(IpcChannels.groupUpdate, id, name),
@@ -24,6 +27,9 @@ const api: RendererApi = {
   getSettings: () => ipcRenderer.invoke(IpcChannels.settingsGet),
   updateSettings: (patch) => ipcRenderer.invoke(IpcChannels.settingsUpdate, patch),
   regenerateToken: () => ipcRenderer.invoke(IpcChannels.settingsRegenerateToken),
+  exportSettings: () => ipcRenderer.invoke(IpcChannels.settingsExport),
+  importSettings: () => ipcRenderer.invoke(IpcChannels.settingsImport),
+  getAppInfo: () => ipcRenderer.invoke(IpcChannels.appInfo),
   openSession: (connectionId) => ipcRenderer.invoke(IpcChannels.sessionOpen, connectionId),
   closeSession: (sessionId) => ipcRenderer.invoke(IpcChannels.sessionClose, sessionId),
   reconnectSession: (sessionId) => ipcRenderer.invoke(IpcChannels.sessionReconnect, sessionId),
@@ -31,13 +37,13 @@ const api: RendererApi = {
   resizeSession: (sessionId, cols, rows) =>
     ipcRenderer.send(IpcChannels.sessionResize, sessionId, cols, rows),
   listSessions: () => ipcRenderer.invoke(IpcChannels.sessionList),
-  onSessionData: (cb) => {
-    const listener = (_e, ev: SessionDataEvent) => cb(ev)
+  onSessionData: (cb): (() => void) => {
+    const listener: (e: IpcRendererEvent, ev: SessionDataEvent) => void = (_e, ev) => cb(ev)
     ipcRenderer.on(IpcChannels.evSessionData, listener)
     return () => ipcRenderer.removeListener(IpcChannels.evSessionData, listener)
   },
-  onSessionStatus: (cb) => {
-    const listener = (_e, ev: SessionStatusEvent) => cb(ev)
+  onSessionStatus: (cb): (() => void) => {
+    const listener: (e: IpcRendererEvent, ev: SessionStatusEvent) => void = (_e, ev) => cb(ev)
     ipcRenderer.on(IpcChannels.evSessionStatus, listener)
     return () => ipcRenderer.removeListener(IpcChannels.evSessionStatus, listener)
   },
@@ -54,13 +60,13 @@ const api: RendererApi = {
   sftpDownload: (connectionId, remotePath, localPath) =>
     ipcRenderer.invoke(IpcChannels.sftpDownload, connectionId, remotePath, localPath),
   sftpCancel: (transferId) => ipcRenderer.invoke(IpcChannels.sftpCancel, transferId),
-  onTransferProgress: (cb) => {
-    const listener = (_e, ev: TransferProgressEvent) => cb(ev)
+  onTransferProgress: (cb): (() => void) => {
+    const listener: (e: IpcRendererEvent, ev: TransferProgressEvent) => void = (_e, ev) => cb(ev)
     ipcRenderer.on(IpcChannels.evTransferProgress, listener)
     return () => ipcRenderer.removeListener(IpcChannels.evTransferProgress, listener)
   },
-  onTransferDone: (cb) => {
-    const listener = (_e, ev: TransferDoneEvent) => cb(ev)
+  onTransferDone: (cb): (() => void) => {
+    const listener: (e: IpcRendererEvent, ev: TransferDoneEvent) => void = (_e, ev) => cb(ev)
     ipcRenderer.on(IpcChannels.evTransferDone, listener)
     return () => ipcRenderer.removeListener(IpcChannels.evTransferDone, listener)
   },

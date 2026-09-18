@@ -23,6 +23,7 @@ export class ConnectionStore {
     const data = await readJson<ConnectionsFile>(this.metaFile, { connections: [], groups: [] })
     for (const c of data.connections) {
       if (c.favorite == null) c.favorite = false
+      if (c.timeoutMs == null) c.timeoutMs = null
     }
     return data
   }
@@ -56,7 +57,8 @@ export class ConnectionStore {
       color: input.color ?? '#409eff',
       favorite: false,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      timeoutMs: input.timeoutMs ?? null
     }
     data.connections.push(meta)
     await this.save(data)
@@ -79,7 +81,8 @@ export class ConnectionStore {
       authType: input.authType,
       remark: input.remark ?? '',
       color: input.color ?? prev.color,
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      timeoutMs: input.timeoutMs ?? null
     }
     data.connections[idx] = meta
     await this.save(data)

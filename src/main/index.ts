@@ -1,11 +1,30 @@
-import { app, shell, BrowserWindow } from 'electron'
+import { readFileSync } from 'fs'
+import { app, shell, dialog, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { AppContext } from './appContext'
 import { registerIpcHandlers } from './ipc'
+import { applySystemSettings, applyWindowUi } from './uiSettings'
 
 let ctx: AppContext
+let quitting = false
+
+// 禁用硬件加速必须在 app ready 之前生效
+function applyEarlySettings(): void {
+  try {
+    const raw = JSON.parse(
+      readFileSync(join(app.getPath('userData'), 'settings.json'), 'utf8')
+    ) as {
+      disableHardwareAcceleration?: boolean
+    }
+    if (raw.disableHardwareAcceleration) app.disableHardwareAcceleration()
+  } catch {
+    /* 首次运行无配置文件 */
+  }
+}
+
+applyEarlySettings()
 
 function createWindow(): void {
   // Create the browser window.
@@ -23,6 +42,47 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+  })
+
+  // 关闭按钮行为：hide 时隐藏到 Dock 保留会话（仅 macOS 有意义）；
+  // 行为为退出且开启「退出前确认」时先弹确认框
+  mainWindow.on('close', (e) => {
+    if (quitting || process.platform !== 'darwin') return
+    try {
+      const raw = JSON.parse(
+        readFileSync(join(app.getPath('userData'), 'settings.json'), 'utf8')
+      ) as { closeButtonAction?: string; confirmOnClose?: boolean }
+      if (raw.closeButtonAction === 'hide') {
+        e.preventDefault()
+        mainWindow.hide()
+        return
+      }
+      if (raw.confirmOnClose) {
+        e.preventDefault()
+        void dialog
+          .showMessageBox(mainWindow, {
+            type: 'question',
+            buttons: ['退出', '取消'],
+            defaultId: 1,
+            cancelId: 1,
+            message: '确定退出 terminalX？'
+          })
+          .then((r) => {
+            if (r.response === 0) {
+              quitting = true
+              mainWindow.close()
+            }
+          })
+      }
+    } catch {
+      /* 无配置文件时按默认行为 */
+    }
+  })
+
+  // 应用持久化的窗口表现与系统设置
+  void ctx.settings.get().then((s) => {
+    applyWindowUi(s)
+    applySystemSettings(s)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -64,8 +124,19 @@ app.whenReady().then(() => {
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    const windows = BrowserWindow.getAllWindows()
+    if (windows.length === 0) {
+      createWindow()
+    } else {
+      for (const win of windows) {
+        if (!win.isVisible()) win.show()
+      }
+    }
   })
+})
+
+app.on('before-quit', () => {
+  quitting = true
 })
 
 // Quit when all windows are closed, except on macOS. There, it's common

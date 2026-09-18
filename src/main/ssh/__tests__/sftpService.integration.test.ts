@@ -103,7 +103,7 @@ class FakeConnections extends ConnectionManager {
       throw new Error('unused')
     })
   }
-  override async acquire(_connectionId: string): Promise<Client> {
+  override async acquire(): Promise<Client> {
     return makeClient(this.sftp)
   }
   override release(connectionId: string): void {

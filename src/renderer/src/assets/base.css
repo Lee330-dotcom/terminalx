@@ -1,18 +1,37 @@
-/* 全局暗色主题：深黑背景 + 绿色主色（Element Plus dark css-vars 之上覆盖） */
+/* 主题变量：浅色为默认值（:root），深色模式在 html.dark 覆盖。
+   applyBackgroundColor 按背景色深浅自动切换 html.dark class。 */
 
 :root {
+  --tx-bg: #f4f5f6;
+  --tx-panel: #ffffff;
+  --tx-card: #ffffff;
+  --tx-hover: #eceff0;
+  --tx-fill: #f0f2f3;
+  --tx-border: #dde1e3;
+  --tx-border-strong: #c3c9cc;
+  --tx-nav: #ffffff;
+  --tx-green: #10b981;
+  --tx-green-hover: #059669;
+  --tx-text: rgba(0, 0, 0, 0.85);
+  --tx-text-2: rgba(0, 0, 0, 0.55);
+  --tx-text-3: rgba(0, 0, 0, 0.38);
+}
+
+html.dark {
   --tx-bg: #0d0d0d;
-  --tx-bg-panel: #151515;
-  --tx-bg-hover: #1d1d1d;
+  --tx-panel: #111111;
+  --tx-card: #151515;
+  --tx-hover: #1d1d1d;
+  --tx-fill: #1a1a1a;
   --tx-border: #262626;
+  --tx-border-strong: #3a3a3a;
+  --tx-nav: #121212;
   --tx-green: #10b981;
   --tx-green-hover: #34d399;
   --tx-text: rgba(255, 255, 255, 0.85);
   --tx-text-2: rgba(255, 255, 255, 0.55);
   --tx-text-3: rgba(255, 255, 255, 0.35);
-}
 
-html.dark {
   --el-color-primary: #10b981;
   --el-color-primary-light-3: #34d399;
   --el-color-primary-light-5: #6ee7b7;
@@ -20,19 +39,19 @@ html.dark {
   --el-color-primary-light-8: #d1fae5;
   --el-color-primary-light-9: #ecfdf5;
   --el-color-primary-dark-2: #059669;
-  --el-bg-color: #0d0d0d;
-  --el-bg-color-page: #0d0d0d;
-  --el-bg-color-overlay: #161616;
-  --el-border-color: #2a2a2a;
-  --el-border-color-light: #262626;
-  --el-border-color-lighter: #222222;
-  --el-fill-color: #1a1a1a;
-  --el-fill-color-light: #161616;
-  --el-fill-color-lighter: #141414;
-  --el-text-color-primary: rgba(255, 255, 255, 0.85);
-  --el-text-color-regular: rgba(255, 255, 255, 0.75);
-  --el-text-color-secondary: rgba(255, 255, 255, 0.5);
-  --el-text-color-placeholder: rgba(255, 255, 255, 0.35);
+  --el-bg-color: var(--tx-bg);
+  --el-bg-color-page: var(--tx-bg);
+  --el-bg-color-overlay: var(--tx-card);
+  --el-border-color: var(--tx-border-strong);
+  --el-border-color-light: var(--tx-border);
+  --el-border-color-lighter: var(--tx-border);
+  --el-fill-color: var(--tx-fill);
+  --el-fill-color-light: var(--tx-card);
+  --el-fill-color-lighter: var(--tx-panel);
+  --el-text-color-primary: var(--tx-text);
+  --el-text-color-regular: var(--tx-text);
+  --el-text-color-secondary: var(--tx-text-2);
+  --el-text-color-placeholder: var(--tx-text-3);
   --el-mask-color: rgba(0, 0, 0, 0.65);
 }
 
@@ -58,7 +77,8 @@ body,
 body {
   color: var(--tx-text);
   background: var(--tx-bg);
-  font-family:
+  font-family: var(
+    --tx-font,
     Inter,
     -apple-system,
     BlinkMacSystemFont,
@@ -66,7 +86,8 @@ body {
     Roboto,
     'PingFang SC',
     'Microsoft YaHei',
-    sans-serif;
+    sans-serif
+  );
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

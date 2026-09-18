@@ -9,7 +9,21 @@ function defaultSettings(): Settings {
   return {
     mcpEnabled: true,
     mcpPort: DEFAULT_PORT,
-    mcpToken: randomBytes(32).toString('hex')
+    mcpToken: randomBytes(32).toString('hex'),
+    mcpDisabledTools: [],
+    themeColor: '#10b981',
+    backgroundColor: '#0d0d0d',
+    navColor: '#151515',
+    followSystemTheme: false,
+    uiFont: '',
+    windowOpacity: 100,
+    uiScale: 100,
+    autoLaunch: false,
+    disableHardwareAcceleration: false,
+    blockSystemSleep: false,
+    closeButtonAction: 'hide',
+    confirmOnClose: false,
+    language: 'zh-CN'
   }
 }
 
@@ -36,6 +50,26 @@ export class SettingsStore {
   async update(patch: Partial<Omit<Settings, 'mcpToken'>>): Promise<Settings> {
     const current = await this.get()
     const next: Settings = { ...current, ...patch, mcpToken: current.mcpToken }
+    await writeJsonAtomic(this.file, next)
+    return next
+  }
+
+  /** 从备份文件整体恢复：未知字段丢弃，token 缺失时重新生成。 */
+  async replace(raw: unknown): Promise<Settings> {
+    if (typeof raw !== 'object' || raw === null) {
+      throw new Error('配置文件格式无效')
+    }
+    const current = await this.get()
+    const parsed = raw as Partial<Settings>
+    const next: Settings = {
+      ...defaultSettings(),
+      ...current,
+      ...parsed,
+      mcpToken:
+        typeof parsed.mcpToken === 'string' && parsed.mcpToken.length >= 16
+          ? parsed.mcpToken
+          : current.mcpToken
+    }
     await writeJsonAtomic(this.file, next)
     return next
   }

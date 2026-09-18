@@ -92,7 +92,11 @@ export class ConnectionManager {
     return managed != null && managed.refCount > 0
   }
 
-  async exec(connectionId: string, command: string, timeoutMs = EXEC_TIMEOUT_MS): Promise<ExecCommandResult> {
+  async exec(
+    connectionId: string,
+    command: string,
+    timeoutMs = EXEC_TIMEOUT_MS
+  ): Promise<ExecCommandResult> {
     const client = await this.acquire(connectionId)
     const started = Date.now()
     try {
@@ -146,4 +150,19 @@ export async function openShell(
       else resolvePromise(stream)
     })
   })
+}
+
+/** 一次性连接测试：成功即断开并 resolve，失败 reject（由调用方翻译错误）。 */
+export async function testConnect(config: ConnectConfig): Promise<void> {
+  const client = new Client()
+  await new Promise<void>((resolvePromise, reject) => {
+    client.once('error', reject)
+    client.once('ready', () => {
+      client.removeListener('error', reject)
+      resolvePromise()
+    })
+    client.connect(config)
+  })
+  client.on('error', () => {})
+  client.end()
 }

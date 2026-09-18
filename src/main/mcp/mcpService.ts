@@ -10,9 +10,11 @@ import type { AppContext } from '../appContext'
 
 const APP_VERSION = ((): string => {
   try {
-    return (JSON.parse(readFileSync(join(__dirname, '../../../package.json'), 'utf8')) as {
-      version: string
-    }).version
+    return (
+      JSON.parse(readFileSync(join(__dirname, '../../../package.json'), 'utf8')) as {
+        version: string
+      }
+    ).version
   } catch {
     return '0.0.0'
   }
@@ -53,182 +55,218 @@ function toolError(err: unknown): { content: { type: 'text'; text: string }[]; i
   return { content: [{ type: 'text', text: `错误：${message}` }], isError: true }
 }
 
-function registerTools(mcp: McpServer, ctx: AppContext): void {
-  mcp.registerTool(
-    'list_connections',
-    { description: '列出所有已保存的 SSH 连接及其在线状态（不含任何凭据）' },
-    async () => {
-      const connections = await ctx.connections.listConnectionsWithStatus((id) =>
-        ctx.ssh.isOnline(id)
-      )
-      return { content: [{ type: 'text' as const, text: JSON.stringify({ connections }, null, 2) }] }
-    }
-  )
-
-  mcp.registerTool(
-    'list_sessions',
-    { description: '列出当前打开的终端会话（含标签标题与状态）' },
-    () => {
-      const sessions = ctx.sessions.list()
-      return { content: [{ type: 'text' as const, text: JSON.stringify({ sessions }, null, 2) }] }
-    }
-  )
-
-  mcp.registerTool(
-    'exec_command',
-    {
-      description:
-        '在指定连接上执行命令（复用已有连接，无活跃连接时临时建立），输出超过 50KB 自动截断。不影响交互式终端。',
-      inputSchema: {
-        connection_id: z.string().describe('连接 ID，来自 list_connections'),
-        command: z.string().describe('要执行的 shell 命令'),
-        timeout: z
-          .number()
-          .int()
-          .min(1000)
-          .max(600000)
-          .optional()
-          .describe('超时毫秒数，默认 120000')
-      }
-    },
-    async (args): Promise<{ content: { type: 'text'; text: string }[] }> => {
-      try {
-        const result: ExecCommandResult = await ctx.ssh.exec(
-          args.connection_id,
-          args.command,
-          args.timeout
-        )
-        const { stdout, stderr, truncated } = truncateExecOutput(result.stdout, result.stderr)
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(
-                {
-                  stdout,
-                  stderr,
-                  exit_code: result.exitCode,
-                  truncated,
-                  duration_ms: result.durationMs
-                },
-                null,
-                2
-              )
-            }
-          ]
-        }
-      } catch (err) {
-        return toolError(err)
-      }
-    }
-  )
-
-  mcp.registerTool(
-    'read_terminal',
-    {
-      description: '读取指定终端会话滚动缓冲中的最近 N 行输出（缓冲上限 10000 行）',
-      inputSchema: {
-        session_id: z.string().describe('会话 ID，来自 list_sessions'),
-        lines: z.number().int().min(1).max(1000).optional().describe('读取行数，默认 100')
-      }
-    },
-    (args): { content: { type: 'text'; text: string }[] } => {
-      try {
-        const result = ctx.sessions.readLines(args.session_id, args.lines ?? 100)
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(
-                { session_id: args.session_id, lines: result.lines, total_lines: result.totalLines },
-                null,
-                2
-              )
-            }
-          ]
-        }
-      } catch (err) {
-        return toolError(err)
-      }
-    }
-  )
-
-  mcp.registerTool(
-    'sftp_list',
-    {
-      description: '列出远程目录内容（目录在前按名称排序）',
-      inputSchema: {
-        connection_id: z.string().describe('连接 ID'),
-        path: z.string().describe('远程绝对路径，如 /home/user')
-      }
-    },
-    async (args): Promise<{ content: { type: 'text'; text: string }[] }> => {
-      try {
-        const result = await ctx.sftp.list(args.connection_id, args.path)
-        return {
-          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
-        }
-      } catch (err) {
-        return toolError(err)
-      }
-    }
-  )
-
-  mcp.registerTool(
-    'sftp_upload',
-    {
-      description: '上传本地文件到远程（超过 100MB 拒绝）',
-      inputSchema: {
-        connection_id: z.string().describe('连接 ID'),
-        local_path: z.string().describe('本地文件路径'),
-        remote_path: z.string().describe('远程目标文件绝对路径')
-      }
-    },
-    async (args): Promise<{ content: { type: 'text'; text: string }[] }> => {
-      try {
-        const result = await ctx.sftp.uploadAndWait(
-          args.connection_id,
-          args.local_path,
-          args.remote_path
+function registerTools(mcp: McpServer, ctx: AppContext, disabled: ReadonlySet<string>): void {
+  if (!disabled.has('list_connections')) {
+    mcp.registerTool(
+      'list_connections',
+      { description: '列出所有已保存的 SSH 连接及其在线状态（不含任何凭据）' },
+      async () => {
+        const connections = await ctx.connections.listConnectionsWithStatus((id) =>
+          ctx.ssh.isOnline(id)
         )
         return {
-          content: [
-            { type: 'text', text: JSON.stringify({ ok: result.ok, message: result.message, bytes_transferred: result.bytesTransferred }) }
-          ]
+          content: [{ type: 'text' as const, text: JSON.stringify({ connections }, null, 2) }]
         }
-      } catch (err) {
-        return toolError(err)
       }
-    }
-  )
+    )
+  }
 
-  mcp.registerTool(
-    'sftp_download',
-    {
-      description: '下载远程文件到本地（超过 100MB 拒绝）',
-      inputSchema: {
-        connection_id: z.string().describe('连接 ID'),
-        remote_path: z.string().describe('远程文件绝对路径'),
-        local_path: z.string().describe('本地目标文件路径')
-      }
-    },
-    async (args): Promise<{ content: { type: 'text'; text: string }[] }> => {
-      try {
-        const result = await ctx.sftp.downloadAndWait(
-          args.connection_id,
-          args.remote_path,
-          args.local_path
-        )
+  if (!disabled.has('list_sessions')) {
+    mcp.registerTool(
+      'list_sessions',
+      { description: '列出当前打开的终端会话（含标签标题与状态）' },
+      () => {
+        const sessions = ctx.sessions.list()
         return {
-          content: [
-            { type: 'text', text: JSON.stringify({ ok: result.ok, message: result.message, bytes_transferred: result.bytesTransferred }) }
-          ]
+          content: [{ type: 'text' as const, text: JSON.stringify({ sessions }, null, 2) }]
         }
-      } catch (err) {
-        return toolError(err)
       }
-    }
-  )
+    )
+  }
+
+  if (!disabled.has('exec_command')) {
+    mcp.registerTool(
+      'exec_command',
+      {
+        description:
+          '在指定连接上执行命令（复用已有连接，无活跃连接时临时建立），输出超过 50KB 自动截断。不影响交互式终端。',
+        inputSchema: {
+          connection_id: z.string().describe('连接 ID，来自 list_connections'),
+          command: z.string().describe('要执行的 shell 命令'),
+          timeout: z
+            .number()
+            .int()
+            .min(1000)
+            .max(600000)
+            .optional()
+            .describe('超时毫秒数，默认 120000')
+        }
+      },
+      async (args): Promise<{ content: { type: 'text'; text: string }[] }> => {
+        try {
+          const result: ExecCommandResult = await ctx.ssh.exec(
+            args.connection_id,
+            args.command,
+            args.timeout
+          )
+          const { stdout, stderr, truncated } = truncateExecOutput(result.stdout, result.stderr)
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    stdout,
+                    stderr,
+                    exit_code: result.exitCode,
+                    truncated,
+                    duration_ms: result.durationMs
+                  },
+                  null,
+                  2
+                )
+              }
+            ]
+          }
+        } catch (err) {
+          return toolError(err)
+        }
+      }
+    )
+  }
+
+  if (!disabled.has('read_terminal')) {
+    mcp.registerTool(
+      'read_terminal',
+      {
+        description: '读取指定终端会话滚动缓冲中的最近 N 行输出（缓冲上限 10000 行）',
+        inputSchema: {
+          session_id: z.string().describe('会话 ID，来自 list_sessions'),
+          lines: z.number().int().min(1).max(1000).optional().describe('读取行数，默认 100')
+        }
+      },
+      (args): { content: { type: 'text'; text: string }[] } => {
+        try {
+          const result = ctx.sessions.readLines(args.session_id, args.lines ?? 100)
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    session_id: args.session_id,
+                    lines: result.lines,
+                    total_lines: result.totalLines
+                  },
+                  null,
+                  2
+                )
+              }
+            ]
+          }
+        } catch (err) {
+          return toolError(err)
+        }
+      }
+    )
+  }
+
+  if (!disabled.has('sftp_list')) {
+    mcp.registerTool(
+      'sftp_list',
+      {
+        description: '列出远程目录内容（目录在前按名称排序）',
+        inputSchema: {
+          connection_id: z.string().describe('连接 ID'),
+          path: z.string().describe('远程绝对路径，如 /home/user')
+        }
+      },
+      async (args): Promise<{ content: { type: 'text'; text: string }[] }> => {
+        try {
+          const result = await ctx.sftp.list(args.connection_id, args.path)
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
+          }
+        } catch (err) {
+          return toolError(err)
+        }
+      }
+    )
+  }
+
+  if (!disabled.has('sftp_upload')) {
+    mcp.registerTool(
+      'sftp_upload',
+      {
+        description: '上传本地文件到远程（超过 100MB 拒绝）',
+        inputSchema: {
+          connection_id: z.string().describe('连接 ID'),
+          local_path: z.string().describe('本地文件路径'),
+          remote_path: z.string().describe('远程目标文件绝对路径')
+        }
+      },
+      async (args): Promise<{ content: { type: 'text'; text: string }[] }> => {
+        try {
+          const result = await ctx.sftp.uploadAndWait(
+            args.connection_id,
+            args.local_path,
+            args.remote_path
+          )
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  ok: result.ok,
+                  message: result.message,
+                  bytes_transferred: result.bytesTransferred
+                })
+              }
+            ]
+          }
+        } catch (err) {
+          return toolError(err)
+        }
+      }
+    )
+  }
+
+  if (!disabled.has('sftp_download')) {
+    mcp.registerTool(
+      'sftp_download',
+      {
+        description: '下载远程文件到本地（超过 100MB 拒绝）',
+        inputSchema: {
+          connection_id: z.string().describe('连接 ID'),
+          remote_path: z.string().describe('远程文件绝对路径'),
+          local_path: z.string().describe('本地目标文件路径')
+        }
+      },
+      async (args): Promise<{ content: { type: 'text'; text: string }[] }> => {
+        try {
+          const result = await ctx.sftp.downloadAndWait(
+            args.connection_id,
+            args.remote_path,
+            args.local_path
+          )
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  ok: result.ok,
+                  message: result.message,
+                  bytes_transferred: result.bytesTransferred
+                })
+              }
+            ]
+          }
+        } catch (err) {
+          return toolError(err)
+        }
+      }
+    )
+  }
 }
 
 /**
@@ -279,9 +317,7 @@ export class McpService {
     if (!header.startsWith(prefix)) return false
     const provided = Buffer.from(header.slice(prefix.length))
     const expected = Buffer.from(this.token)
-    return (
-      provided.length === expected.length && timingSafeEqual(provided, expected)
-    )
+    return provided.length === expected.length && timingSafeEqual(provided, expected)
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -296,7 +332,13 @@ export class McpService {
     }
     if (!this.isAuthorized(req)) {
       res.writeHead(401, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32001, message: '未授权：缺少或错误的 Bearer token' }, id: null }))
+      res.end(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          error: { code: -32001, message: '未授权：缺少或错误的 Bearer token' },
+          id: null
+        })
+      )
       return
     }
     if (req.url !== '/mcp') {
@@ -307,14 +349,21 @@ export class McpService {
     // 无状态模式：每个请求独立的 server + transport，不维护会话（GET/DELETE 不支持）
     if (req.method !== 'POST') {
       res.writeHead(405, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed' }, id: null }))
+      res.end(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          error: { code: -32000, message: 'Method not allowed' },
+          id: null
+        })
+      )
       return
     }
     const body = await readJsonBody(req, res)
     if (body === null) return
 
+    const settings = await this.ctx.settings.get()
     const mcp = new McpServer({ name: 'terminalx', version: APP_VERSION })
-    registerTools(mcp, this.ctx)
+    registerTools(mcp, this.ctx, new Set(settings.mcpDisabledTools ?? []))
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined
     })
@@ -341,10 +390,7 @@ export class McpService {
   }
 }
 
-async function readJsonBody(
-  req: IncomingMessage,
-  res: ServerResponse
-): Promise<unknown | null> {
+async function readJsonBody(req: IncomingMessage, res: ServerResponse): Promise<unknown | null> {
   const chunks: Buffer[] = []
   let size = 0
   for await (const chunk of req) {

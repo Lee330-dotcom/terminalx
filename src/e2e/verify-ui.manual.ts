@@ -34,6 +34,12 @@ async function sshdReady(): Promise<boolean> {
   }
 }
 
+function asciiOnly(s: string): string {
+  return Array.from(s)
+    .filter((ch) => ch.charCodeAt(0) <= 0x7f)
+    .join('')
+}
+
 async function waitForPage(timeoutMs = 30000): Promise<void> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -49,7 +55,10 @@ async function waitForPage(timeoutMs = 30000): Promise<void> {
   throw new Error('timeout waiting for electron page')
 }
 
-async function doubleClickTreeNode(page: import('puppeteer-core').Page, name: string): Promise<void> {
+async function doubleClickTreeNode(
+  page: import('puppeteer-core').Page,
+  name: string
+): Promise<void> {
   await page.evaluate((n) => {
     const nodes = Array.from(document.querySelectorAll('.tree-node'))
     const target = nodes.find((el) => el.textContent?.trim() === n)
@@ -60,7 +69,9 @@ async function doubleClickTreeNode(page: import('puppeteer-core').Page, name: st
 
 beforeAll(async () => {
   if (!(await sshdReady())) {
-    throw new Error('临时 sshd 未运行，请先执行 /usr/sbin/sshd -f /tmp/ssh-e2e/sshd_config -E /tmp/ssh-e2e/sshd.log')
+    throw new Error(
+      '临时 sshd 未运行，请先执行 /usr/sbin/sshd -f /tmp/ssh-e2e/sshd_config -E /tmp/ssh-e2e/sshd.log'
+    )
   }
   userDataDir = await fs.mkdtemp(join(tmpdir(), 'terminalx-ui-verify-'))
   electron = spawn(
@@ -143,16 +154,17 @@ describe('任务 8.1：真实 sshd 上的 UI 手工清单（CDP 驱动）', () =
       { timeout: 20000 }
     )
     const listText = await page.evaluate(() => document.querySelector('.sftp-list')?.textContent)
-    console.log('[verify] 3. SFTP 面板初始目录:', String(listText).slice(0, 150).replace(/\s+/g, ' '))
+    console.log(
+      '[verify] 3. SFTP 面板初始目录:',
+      String(listText).slice(0, 150).replace(/\s+/g, ' ')
+    )
     const pathBar = await page.evaluate(() => document.querySelector('.path-bar')?.textContent)
     console.log('[verify] 3. 路径栏:', String(pathBar).slice(0, 80))
 
     // 双击 Users 目录行进入（/tmp 是 symlink，lstat 不跟随，避开）
     const clicked = await page.evaluate(() => {
       const names = Array.from(document.querySelectorAll('.sftp-list .entry-name'))
-      const target = names.find(
-        (el) => (el.textContent ?? '').replace(/[^\x00-\x7f]/g, '').trim() === 'Users'
-      )
+      const target = names.find((el) => asciiOnly(el.textContent ?? '').trim() === 'Users')
       const row = target?.closest('tr')
       if (!row) return false
       row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))
@@ -176,9 +188,7 @@ describe('任务 8.1：真实 sshd 上的 UI 手工清单（CDP 驱动）', () =
     console.log('[verify] 3c. /Users 列表已加载')
     const entered = await page.evaluate((u) => {
       const names = Array.from(document.querySelectorAll('.sftp-list .entry-name'))
-      const target = names.find(
-        (el) => (el.textContent ?? '').replace(/[^\x00-\x7f]/g, '').trim() === u
-      )
+      const target = names.find((el) => asciiOnly(el.textContent ?? '').trim() === u)
       const row = target?.closest('tr')
       if (!row) return false
       row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))
@@ -198,10 +208,11 @@ describe('任务 8.1：真实 sshd 上的 UI 手工清单（CDP 驱动）', () =
     const bigContent = `ui upload content ${marker}\n` + 'x'.repeat(1024 * 1024)
     await fs.writeFile(localFile, bigContent)
     const remoteUploadPath = `/Users/${username}/ui_verify_upload.txt`
-    await page.evaluate(
-      ({ id, local, remote }) => window.api.sftpUpload(id, local, remote),
-      { id: conn!.id, local: localFile, remote: remoteUploadPath }
-    )
+    await page.evaluate(({ id, local, remote }) => window.api.sftpUpload(id, local, remote), {
+      id: conn!.id,
+      local: localFile,
+      remote: remoteUploadPath
+    })
     // 等远端文件出现（传输完成）
     const deadline = Date.now() + 30000
     let remoteCheck = ''
@@ -233,9 +244,7 @@ describe('任务 8.1：真实 sshd 上的 UI 手工清单（CDP 驱动）', () =
     )
     await page.evaluate((u) => {
       const names = Array.from(document.querySelectorAll('.sftp-list .entry-name'))
-      const target = names.find(
-        (el) => (el.textContent ?? '').replace(/[^\x00-\x7f]/g, '').trim() === u
-      )
+      const target = names.find((el) => asciiOnly(el.textContent ?? '').trim() === u)
       const row = target?.closest('tr')
       row?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))
     }, username)
@@ -247,10 +256,11 @@ describe('任务 8.1：真实 sshd 上的 UI 手工清单（CDP 驱动）', () =
 
     // 5. 下载并比对
     const downloadPath = join(tmpdir(), 'ui-verify-downloaded.txt')
-    await page.evaluate(
-      ({ id, remote, local }) => window.api.sftpDownload(id, remote, local),
-      { id: conn!.id, remote: remoteUploadPath, local: downloadPath }
-    )
+    await page.evaluate(({ id, remote, local }) => window.api.sftpDownload(id, remote, local), {
+      id: conn!.id,
+      remote: remoteUploadPath,
+      local: downloadPath
+    })
     const dlDeadline = Date.now() + 30000
     while (Date.now() < dlDeadline) {
       try {

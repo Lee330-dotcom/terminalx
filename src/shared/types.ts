@@ -16,6 +16,8 @@ export interface ConnectionMeta {
   favorite: boolean
   createdAt: number
   updatedAt: number
+  /** 连接超时（毫秒），null 表示默认 15000 */
+  timeoutMs: number | null
 }
 
 export interface ConnectionInput {
@@ -33,6 +35,8 @@ export interface ConnectionInput {
   passphrase?: string
   remark?: string
   color?: string
+  /** 连接超时（毫秒），null/缺省表示默认 15000 */
+  timeoutMs?: number | null
 }
 
 export interface ConnectionGroup {
@@ -56,10 +60,49 @@ export interface ProbeResult {
   latencyMs: number | null
 }
 
+export interface ConnectionTestResult {
+  ok: boolean
+  error?: string
+  durationMs?: number
+}
+
 export interface Settings {
   mcpEnabled: boolean
   mcpPort: number
   mcpToken: string
+  /** 被禁用的 MCP 工具名（不注册到 server） */
+  mcpDisabledTools: string[]
+  /** 主题色（hex），应用到 Element Plus 主色与界面强调色 */
+  themeColor: string
+  /** 主背景色（hex） */
+  backgroundColor: string
+  /** 顶部导航栏背景色（hex） */
+  navColor: string
+  /** 跟随系统深色/浅色主题（亮色用「明亮」预设，暗色用「暗夜」预设） */
+  followSystemTheme: boolean
+  /** 界面字体，空串表示系统默认 */
+  uiFont: string
+  /** 窗口不透明度（60-100） */
+  windowOpacity: number
+  /** 界面缩放百分比（80-140） */
+  uiScale: number
+  /** 开机自启动 */
+  autoLaunch: boolean
+  /** 禁用硬件加速（重启后生效） */
+  disableHardwareAcceleration: boolean
+  /** 阻止系统休眠 */
+  blockSystemSleep: boolean
+  /** 关闭按钮行为：quit 退出程序 / hide 隐藏到 Dock 保留会话 */
+  closeButtonAction: 'quit' | 'hide'
+  /** 退出前弹确认框（仅关闭按钮行为为「退出程序」时生效） */
+  confirmOnClose: boolean
+  /** 界面语言 */
+  language: 'zh-CN' | 'en-US'
+}
+
+export interface AppInfo {
+  version: string
+  platform: string
 }
 
 export type SessionStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
@@ -122,6 +165,7 @@ export const IpcChannels = {
   connDelete: 'conn:delete',
   connToggleFavorite: 'conn:toggle-favorite',
   connProbe: 'conn:probe',
+  connTest: 'conn:test',
   groupList: 'group:list',
   groupCreate: 'group:create',
   groupUpdate: 'group:update',
@@ -129,6 +173,9 @@ export const IpcChannels = {
   settingsGet: 'settings:get',
   settingsUpdate: 'settings:update',
   settingsRegenerateToken: 'settings:regenerate-token',
+  settingsExport: 'settings:export',
+  settingsImport: 'settings:import',
+  appInfo: 'app:info',
   sessionOpen: 'session:open',
   sessionClose: 'session:close',
   sessionInput: 'session:input',
@@ -189,6 +236,8 @@ export interface RendererApi {
   deleteConnection(id: string): Promise<void>
   toggleFavorite(id: string): Promise<ConnectionMeta>
   probeConnections(targets: ProbeTarget[]): Promise<ProbeResult[]>
+  /** 用表单值做一次性连接测试；编辑时传 existingId 可复用已保存凭据 */
+  testConnection(input: ConnectionInput, existingId?: string): Promise<ConnectionTestResult>
   listGroups(): Promise<ConnectionGroup[]>
   createGroup(name: string): Promise<ConnectionGroup>
   updateGroup(id: string, name: string): Promise<ConnectionGroup>
@@ -196,6 +245,9 @@ export interface RendererApi {
   getSettings(): Promise<Settings>
   updateSettings(patch: Partial<Omit<Settings, 'mcpToken'>>): Promise<Settings>
   regenerateToken(): Promise<string>
+  exportSettings(): Promise<string | null>
+  importSettings(): Promise<{ ok: boolean; error?: string }>
+  getAppInfo(): Promise<AppInfo>
   openSession(connectionId: string): Promise<SessionOpenResult>
   closeSession(sessionId: string): Promise<void>
   reconnectSession(sessionId: string): Promise<void>

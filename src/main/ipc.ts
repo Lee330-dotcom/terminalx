@@ -1,7 +1,17 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron'
-import { IpcChannels, ProbeTarget } from '@shared/types'
+import { ipcMain, dialog, BrowserWindow, app } from 'electron'
+import { promises as fs } from 'fs'
+import { ConnectionInput, IpcChannels, ProbeTarget, Settings } from '@shared/types'
 import { AppContext } from './appContext'
 import { probeTargets } from './ssh/latencyProbe'
+import { describeSshError, testConnect } from './ssh/connectionManager'
+import { buildConnectConfigFromInput } from './ssh/config'
+import { applySystemSettings, applyWindowUi } from './uiSettings'
+
+const MCP_SETTING_KEYS = ['mcpEnabled', 'mcpPort', 'mcpDisabledTools'] as const
+
+function mcpSettingsChanged(patch: Partial<Omit<Settings, 'mcpToken'>>): boolean {
+  return MCP_SETTING_KEYS.some((k) => k in patch)
+}
 
 export function registerIpcHandlers(ctx: AppContext): void {
   ipcMain.handle(IpcChannels.ping, () => 'pong')
@@ -17,6 +27,17 @@ export function registerIpcHandlers(ctx: AppContext): void {
   ipcMain.handle(IpcChannels.connDelete, (_e, id) => ctx.connections.deleteConnection(id))
   ipcMain.handle(IpcChannels.connToggleFavorite, (_e, id) => ctx.connections.toggleFavorite(id))
   ipcMain.handle(IpcChannels.connProbe, (_e, targets: ProbeTarget[]) => probeTargets(targets))
+  ipcMain.handle(IpcChannels.connTest, async (_e, input: ConnectionInput, existingId?: string) => {
+    const started = Date.now()
+    try {
+      const fallback = existingId ? await ctx.connections.getSecret(existingId) : null
+      const config = await buildConnectConfigFromInput(input, fallback)
+      await testConnect(config)
+      return { ok: true, durationMs: Date.now() - started }
+    } catch (err) {
+      return { ok: false, error: describeSshError(err as Error) }
+    }
+  })
 
   ipcMain.handle(IpcChannels.groupList, () => ctx.connections.listGroups())
   ipcMain.handle(IpcChannels.groupCreate, (_e, name) => ctx.connections.createGroup(name))
@@ -27,10 +48,14 @@ export function registerIpcHandlers(ctx: AppContext): void {
   ipcMain.handle(IpcChannels.settingsGet, () => ctx.settings.get())
   ipcMain.handle(IpcChannels.settingsUpdate, async (_e, patch) => {
     const result = await ctx.settings.update(patch)
-    // MCP 开关/端口/token 变化时重启服务
-    void ctx.mcp.restart().catch((err) => {
-      console.error('MCP 服务重启失败:', err)
-    })
+    applySystemSettings(result)
+    applyWindowUi(result)
+    // 仅 MCP 相关字段变化时重启服务
+    if (mcpSettingsChanged(patch)) {
+      void ctx.mcp.restart().catch((err) => {
+        console.error('MCP 服务重启失败:', err)
+      })
+    }
     return result
   })
   ipcMain.handle(IpcChannels.settingsRegenerateToken, async () => {
@@ -40,6 +65,44 @@ export function registerIpcHandlers(ctx: AppContext): void {
     })
     return token
   })
+  ipcMain.handle(IpcChannels.settingsExport, async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const settings = await ctx.settings.get()
+    const date = new Date().toISOString().slice(0, 10)
+    const opts = {
+      defaultPath: `terminalx-settings-${date}.json`,
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    }
+    const result = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts)
+    if (result.canceled || !result.filePath) return null
+    await fs.writeFile(result.filePath, JSON.stringify(settings, null, 2), 'utf8')
+    return result.filePath
+  })
+  ipcMain.handle(IpcChannels.settingsImport, async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const opts = {
+      properties: ['openFile' as const],
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    }
+    const result = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+    if (result.canceled || !result.filePaths[0]) return { ok: false, error: '已取消' }
+    try {
+      const raw = JSON.parse(await fs.readFile(result.filePaths[0], 'utf8'))
+      const settings = await ctx.settings.replace(raw)
+      applySystemSettings(settings)
+      applyWindowUi(settings)
+      void ctx.mcp.restart().catch((err) => {
+        console.error('MCP 服务重启失败:', err)
+      })
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: String(err) }
+    }
+  })
+  ipcMain.handle(IpcChannels.appInfo, () => ({
+    version: app.getVersion(),
+    platform: process.platform
+  }))
 
   // ---- 终端会话 ----
   ipcMain.handle(IpcChannels.sessionOpen, (_e, connectionId) => ctx.sessions.open(connectionId))

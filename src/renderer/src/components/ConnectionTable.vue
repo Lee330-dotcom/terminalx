@@ -5,6 +5,7 @@ import { DocumentCopy, Star, StarFilled } from '@element-plus/icons-vue'
 import { useAppStore } from '../stores/app'
 import { useSessionStore } from '../stores/sessions'
 import type { ConnectionFilter } from '../filter'
+import { t } from '../i18n'
 import type { ConnectionWithStatus } from '@shared/types'
 
 const props = defineProps<{
@@ -73,13 +74,13 @@ async function toggleFavorite(id: string): Promise<void> {
   try {
     await store.toggleFavorite(id)
   } catch (err) {
-    ElMessage.error(`操作失败：${String(err)}`)
+    ElMessage.error(t('app.opFailed', { err: String(err) }))
   }
 }
 
 async function copyHost(host: string): Promise<void> {
   await navigator.clipboard.writeText(host)
-  ElMessage.success('地址已复制')
+  ElMessage.success(t('table.addressCopied'))
 }
 
 function onRowCommand(c: ConnectionWithStatus, cmd: string): void {
@@ -89,11 +90,11 @@ function onRowCommand(c: ConnectionWithStatus, cmd: string): void {
 
 async function deleteOne(id: string): Promise<void> {
   try {
-    await ElMessageBox.confirm('删除该连接？其保存的凭据将一并清除。', '删除确认', {
+    await ElMessageBox.confirm(t('table.deleteOneConfirm'), t('common.confirmDelete'), {
       type: 'warning'
     })
     await store.deleteConnection(id)
-    ElMessage.success('连接已删除')
+    ElMessage.success(t('table.connectionDeleted'))
   } catch {
     /* 取消 */
   }
@@ -102,15 +103,15 @@ async function deleteOne(id: string): Promise<void> {
 async function batchDelete(): Promise<void> {
   try {
     await ElMessageBox.confirm(
-      `删除选中的 ${selected.value.length} 个连接？其保存的凭据将一并清除。`,
-      '删除确认',
+      t('table.deleteManyConfirm', { n: selected.value.length }),
+      t('common.confirmDelete'),
       { type: 'warning' }
     )
     for (const id of selected.value) {
       await store.deleteConnection(id)
     }
     selected.value = []
-    ElMessage.success('已删除')
+    ElMessage.success(t('table.deleted'))
   } catch {
     /* 取消 */
   }
@@ -137,9 +138,11 @@ watch(
 <template>
   <div class="conn-table-wrap">
     <div v-if="selected.length > 0" class="batch-bar">
-      <span class="batch-count">已选 {{ selected.length }} 项</span>
-      <el-button size="small" type="danger" plain @click="batchDelete">删除</el-button>
-      <el-button size="small" text @click="selected = []">取消</el-button>
+      <span class="batch-count">{{ t('table.selected', { n: selected.length }) }}</span>
+      <el-button size="small" type="danger" plain @click="batchDelete">{{
+        t('common.delete')
+      }}</el-button>
+      <el-button size="small" text @click="selected = []">{{ t('common.cancel') }}</el-button>
     </div>
 
     <div v-if="rows.length > 0" class="conn-table">
@@ -149,11 +152,11 @@ watch(
         </span>
         <span class="col-star" />
         <span class="col-os" />
-        <span class="col-latency">延迟</span>
-        <span class="col-name">名称</span>
-        <span class="col-addr">地址</span>
-        <span class="col-info">信息</span>
-        <span class="col-actions">操作</span>
+        <span class="col-latency">{{ t('table.latency') }}</span>
+        <span class="col-name">{{ t('table.name') }}</span>
+        <span class="col-addr">{{ t('table.address') }}</span>
+        <span class="col-info">{{ t('table.info') }}</span>
+        <span class="col-actions">{{ t('table.actions') }}</span>
       </div>
 
       <template v-for="c in rows" :key="c.id">
@@ -189,7 +192,9 @@ watch(
             <template v-if="store.probes[c.id] != null">
               <span class="latency-ok">{{ store.probes[c.id] }} ms</span>
             </template>
-            <span v-else-if="store.probes[c.id] === null" class="latency-bad">超时</span>
+            <span v-else-if="store.probes[c.id] === null" class="latency-bad">{{
+              t('table.timeout')
+            }}</span>
             <span v-else class="latency-pending">…</span>
           </span>
           <span class="col-name">
@@ -209,15 +214,19 @@ watch(
           </span>
           <span class="col-actions">
             <el-button size="small" type="primary" @click.stop="emit('connect', c.id)">
-              连接
+              {{ t('common.connect') }}
             </el-button>
-            <el-button size="small" text @click.stop="emit('edit', c.id)">编辑</el-button>
+            <el-button size="small" text @click.stop="emit('edit', c.id)">{{
+              t('common.edit')
+            }}</el-button>
             <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(c, cmd)">
-              <span class="more-btn" @click.stop>更多 ▾</span>
+              <span class="more-btn" @click.stop>{{ t('table.more') }}</span>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="clone">复制</el-dropdown-item>
-                  <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
+                  <el-dropdown-item command="clone">{{ t('common.copy') }}</el-dropdown-item>
+                  <el-dropdown-item command="delete" divided>{{
+                    t('common.delete')
+                  }}</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -226,15 +235,29 @@ watch(
 
         <div v-if="expanded.includes(c.id)" class="row detail">
           <span class="detail-inner">
-            <span class="detail-item">用户：{{ c.username }}</span>
-            <span class="detail-item">端口：{{ c.port }}</span>
-            <span class="detail-item">分组：{{ c.groupId ? groupName(c.groupId) : '未分组' }}</span>
-            <span class="detail-item">认证：{{ c.authType === 'password' ? '密码' : '私钥' }}</span>
-            <span v-if="c.remark" class="detail-item">备注：{{ c.remark }}</span>
-            <span class="detail-item">创建：{{ formatTime(c.createdAt) }}</span>
+            <span class="detail-item">{{ t('table.user', { v: c.username }) }}</span>
+            <span class="detail-item">{{ t('table.port', { v: c.port }) }}</span>
+            <span class="detail-item">{{
+              t('table.group', { v: c.groupId ? groupName(c.groupId) : t('table.ungrouped') })
+            }}</span>
+            <span class="detail-item">{{
+              t('table.auth', {
+                v: c.authType === 'password' ? t('table.authPassword') : t('table.authKey')
+              })
+            }}</span>
+            <span v-if="c.remark" class="detail-item">{{
+              t('table.remark', { v: c.remark })
+            }}</span>
+            <span class="detail-item">{{
+              t('table.createdAt', { v: formatTime(c.createdAt) })
+            }}</span>
             <span v-if="sessionStore.usage[c.id]" class="detail-item">
-              使用 {{ sessionStore.usage[c.id].count }} 次 · 最近
-              {{ formatTime(sessionStore.usage[c.id].lastAt) }}
+              {{
+                t('table.usage', {
+                  count: sessionStore.usage[c.id].count,
+                  time: formatTime(sessionStore.usage[c.id].lastAt)
+                })
+              }}
             </span>
           </span>
         </div>
@@ -242,9 +265,9 @@ watch(
     </div>
 
     <div v-else class="table-empty">
-      <p>{{ store.connections.length === 0 ? '暂无连接' : '没有匹配的连接' }}</p>
+      <p>{{ store.connections.length === 0 ? t('table.noConnections') : t('table.noMatch') }}</p>
       <el-button v-if="store.connections.length === 0" type="primary" @click="emit('edit', '')">
-        新建连接
+        {{ t('app.newConnection') }}
       </el-button>
     </div>
   </div>
@@ -264,19 +287,19 @@ watch(
   gap: 10px;
   padding: 8px 12px;
   margin-bottom: 10px;
-  background: #16241c;
-  border: 1px solid #1f3d2e;
+  background: color-mix(in srgb, var(--tx-green) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tx-green) 30%, transparent);
   border-radius: 8px;
 }
 .batch-count {
-  color: #34d399;
+  color: var(--tx-green-hover);
   font-size: 13px;
 }
 .conn-table {
   flex: 1;
   overflow: auto;
-  background: #121212;
-  border: 1px solid #232323;
+  background: var(--tx-panel);
+  border: 1px solid var(--tx-border);
   border-radius: 10px;
 }
 .row {
@@ -284,25 +307,25 @@ watch(
   align-items: center;
   gap: 6px;
   padding: 7px 12px;
-  border-bottom: 1px solid #1d1d1d;
+  border-bottom: 1px solid var(--tx-border);
   font-size: 13px;
 }
 .row:hover {
-  background: #181818;
+  background: var(--tx-hover);
 }
 .row.expanded {
-  background: #161616;
+  background: var(--tx-fill);
 }
 .row.head {
   position: sticky;
   top: 0;
-  background: #171717;
+  background: var(--tx-panel);
   color: var(--tx-text-3);
   font-size: 12px;
   z-index: 1;
 }
 .row.head:hover {
-  background: #171717;
+  background: var(--tx-panel);
 }
 .col-check {
   width: 22px;
@@ -316,7 +339,7 @@ watch(
   align-items: center;
 }
 .star {
-  color: #4a4a4a;
+  color: var(--tx-text-3);
   font-size: 15px;
 }
 .star.filled {
@@ -337,7 +360,7 @@ watch(
   font-variant-numeric: tabular-nums;
 }
 .latency-ok {
-  color: #34d399;
+  color: var(--tx-green-hover);
 }
 .latency-bad {
   color: #f87171;
@@ -379,12 +402,12 @@ watch(
 }
 .copy-icon {
   cursor: pointer;
-  color: #4a4a4a;
+  color: var(--tx-text-3);
   font-size: 13px;
   flex-shrink: 0;
 }
 .copy-icon:hover {
-  color: #34d399;
+  color: var(--tx-green-hover);
 }
 .col-info {
   width: 46px;
@@ -408,11 +431,11 @@ watch(
   white-space: nowrap;
 }
 .more-btn:hover {
-  color: #34d399;
-  background: #1f1f1f;
+  color: var(--tx-green-hover);
+  background: var(--tx-hover);
 }
 .row.detail {
-  background: #141414;
+  background: var(--tx-fill);
   padding-top: 2px;
   padding-bottom: 8px;
 }
