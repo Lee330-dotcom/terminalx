@@ -11,17 +11,52 @@ export interface SessionTab {
 
 let unsubStatus: (() => void) | null = null
 
+const USAGE_KEY = 'terminalx.usage'
+
+interface UsageRecord {
+  count: number
+  lastAt: number
+}
+
+function loadUsage(): Record<string, UsageRecord> {
+  try {
+    return JSON.parse(localStorage.getItem(USAGE_KEY) ?? '{}') as Record<string, UsageRecord>
+  } catch {
+    return {}
+  }
+}
+
+function saveUsage(usage: Record<string, UsageRecord>): void {
+  localStorage.setItem(USAGE_KEY, JSON.stringify(usage))
+}
+
 export const useSessionStore = defineStore('sessions', {
   state: () => ({
     tabs: [] as SessionTab[],
-    activeSessionId: null as string | null
+    activeSessionId: null as string | null,
+    usage: loadUsage() as Record<string, UsageRecord>
   }),
   getters: {
     activeTab(state): SessionTab | null {
       return state.tabs.find((t) => t.sessionId === state.activeSessionId) ?? null
+    },
+    recentIds(state): string[] {
+      return Object.entries(state.usage)
+        .sort((a, b) => b[1].lastAt - a[1].lastAt)
+        .map(([id]) => id)
+    },
+    frequentIds(state): string[] {
+      return Object.entries(state.usage)
+        .sort((a, b) => b[1].count - a[1].count)
+        .map(([id]) => id)
     }
   },
   actions: {
+    recordUsage(connectionId: string): void {
+      const prev = this.usage[connectionId] ?? { count: 0, lastAt: 0 }
+      this.usage[connectionId] = { count: prev.count + 1, lastAt: Date.now() }
+      saveUsage(this.usage)
+    },
     ensureStatusListener(): void {
       if (unsubStatus) return
       unsubStatus = window.api.onSessionStatus((ev) => {
@@ -42,6 +77,7 @@ export const useSessionStore = defineStore('sessions', {
         status: 'connecting'
       })
       this.activeSessionId = sessionId
+      this.recordUsage(connectionId)
     },
     setActive(sessionId: string): void {
       this.activeSessionId = sessionId
@@ -51,7 +87,8 @@ export const useSessionStore = defineStore('sessions', {
       const idx = this.tabs.findIndex((t) => t.sessionId === sessionId)
       if (idx >= 0) this.tabs.splice(idx, 1)
       if (this.activeSessionId === sessionId) {
-        this.activeSessionId = this.tabs.length > 0 ? this.tabs[Math.max(0, idx - 1)].sessionId : null
+        this.activeSessionId =
+          this.tabs.length > 0 ? this.tabs[Math.max(0, idx - 1)].sessionId : null
       }
     },
     async reconnect(sessionId: string): Promise<void> {

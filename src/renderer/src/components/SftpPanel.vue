@@ -90,11 +90,7 @@ async function renameEntry(entry: SftpEntry): Promise<void> {
       inputErrorMessage: '名称不能包含 /'
     })
     if (value === entry.name) return
-    await window.api.sftpRename(
-      props.connectionId,
-      entry.path,
-      joinPosix(currentPath.value, value)
-    )
+    await window.api.sftpRename(props.connectionId, entry.path, joinPosix(currentPath.value, value))
     await refresh()
   } catch {
     /* 用户取消 */
@@ -148,7 +144,11 @@ function onDrop(e: DragEvent): void {
   if (!files) return
   for (const file of Array.from(files)) {
     const localPath = window.api.getPathForFile(file)
-    void transferStore.upload(props.connectionId, localPath, joinPosix(currentPath.value, file.name))
+    void transferStore.upload(
+      props.connectionId,
+      localPath,
+      joinPosix(currentPath.value, file.name)
+    )
   }
 }
 
@@ -229,7 +229,9 @@ watch(
       <el-button size="small" type="primary" @click="uploadFiles">上传</el-button>
       <el-button size="small" @click="createFolder">新建文件夹</el-button>
       <el-button size="small" :disabled="!selected" @click="downloadSelected">下载</el-button>
-      <el-button size="small" :disabled="!selected" @click="renameEntry(selected!)">重命名</el-button>
+      <el-button size="small" :disabled="!selected" @click="renameEntry(selected!)"
+        >重命名</el-button
+      >
       <el-button size="small" type="danger" :disabled="!selected" @click="deleteEntry(selected!)">
         删除
       </el-button>
@@ -278,7 +280,9 @@ watch(
         <span class="transfer-size">
           {{ formatSize(t.transferred) }}{{ t.total > 0 ? ` / ${formatSize(t.total)}` : '' }}
         </span>
-        <el-button size="small" text type="danger" @click="transferStore.cancel(t.id)">取消</el-button>
+        <el-button size="small" text type="danger" @click="transferStore.cancel(t.id)"
+          >取消</el-button
+        >
       </div>
     </div>
 
@@ -293,20 +297,20 @@ watch(
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #fff;
-  border-left: 1px solid #e4e7ed;
+  background: #0d0d0d;
+  border-left: 1px solid #1f1f1f;
   position: relative;
 }
 .sftp-panel.drag-over::after {
   content: '松开鼠标上传到当前目录';
   position: absolute;
   inset: 0;
-  background: rgba(64, 158, 255, 0.08);
-  border: 2px dashed #409eff;
+  background: rgba(16, 185, 129, 0.08);
+  border: 2px dashed #10b981;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #409eff;
+  color: #34d399;
   font-size: 14px;
   z-index: 10;
   pointer-events: none;
@@ -316,7 +320,7 @@ watch(
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  border-bottom: 1px solid #f0f1f3;
+  border-bottom: 1px solid #1f1f1f;
 }
 .path-bar {
   flex: 1;
@@ -328,22 +332,22 @@ watch(
   white-space: nowrap;
 }
 .path-part {
-  color: #409eff;
+  color: #34d399;
   cursor: pointer;
   padding: 2px 4px;
   border-radius: 3px;
 }
 .path-part:hover {
-  background: #ecf5ff;
+  background: #16241c;
 }
 .path-sep {
-  color: #c0c4cc;
+  color: #4a4a4a;
 }
 .sftp-toolbar {
   display: flex;
   gap: 6px;
   padding: 6px 8px;
-  border-bottom: 1px solid #f0f1f3;
+  border-bottom: 1px solid #1f1f1f;
 }
 .sftp-list {
   flex: 1;
@@ -356,11 +360,11 @@ watch(
   cursor: pointer;
 }
 .transfer-list {
-  border-top: 1px solid #e4e7ed;
+  border-top: 1px solid #1f1f1f;
   padding: 6px 8px;
   max-height: 160px;
   overflow-y: auto;
-  background: #fafafa;
+  background: #111;
 }
 .transfer-item {
   display: flex;
@@ -380,7 +384,7 @@ watch(
   flex: 1;
 }
 .transfer-size {
-  color: #909399;
+  color: var(--tx-text-3);
   white-space: nowrap;
 }
 .preview-text {
@@ -389,7 +393,8 @@ watch(
   margin: 0;
   font-size: 12px;
   line-height: 1.5;
-  background: #f5f7fa;
+  background: #161616;
+  color: var(--tx-text);
   padding: 12px;
   border-radius: 4px;
   white-space: pre-wrap;

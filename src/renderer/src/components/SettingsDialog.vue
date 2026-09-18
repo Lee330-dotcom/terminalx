@@ -107,7 +107,7 @@ onMounted(load)
 }
 .url-text {
   flex: 1;
-  background: #f2f3f5;
+  background: #1a1a1a;
   padding: 4px 8px;
   border-radius: 4px;
   overflow: hidden;
@@ -116,7 +116,7 @@ onMounted(load)
 }
 .token-text {
   flex: 1;
-  background: #f2f3f5;
+  background: #1a1a1a;
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 12px;

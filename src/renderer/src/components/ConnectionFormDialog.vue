@@ -30,7 +30,7 @@ const form = reactive({
   privateKeyContent: '',
   passphrase: '',
   remark: '',
-  color: '#409eff'
+  color: '#10b981'
 })
 
 const isEdit = (): boolean => props.connectionId !== ''
@@ -52,7 +52,7 @@ watch(
       privateKeyContent: '',
       passphrase: '',
       remark: '',
-      color: '#409eff'
+      color: '#10b981'
     })
     if (isEdit()) {
       const conn = store.connections.find((c) => c.id === props.connectionId)
@@ -183,7 +183,12 @@ async function save(): Promise<void> {
           />
         </el-form-item>
         <el-form-item label="口令">
-          <el-input v-model="form.passphrase" type="password" show-password placeholder="私钥口令（可选）" />
+          <el-input
+            v-model="form.passphrase"
+            type="password"
+            show-password
+            placeholder="私钥口令（可选）"
+          />
         </el-form-item>
       </template>
       <el-form-item label="标签色">

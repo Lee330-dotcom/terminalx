@@ -13,6 +13,7 @@ export interface ConnectionMeta {
   authType: AuthType
   remark: string
   color: string
+  favorite: boolean
   createdAt: number
   updatedAt: number
 }
@@ -42,6 +43,17 @@ export interface ConnectionGroup {
 
 export interface ConnectionWithStatus extends ConnectionMeta {
   online: boolean
+}
+
+export interface ProbeTarget {
+  id: string
+  host: string
+  port: number
+}
+
+export interface ProbeResult {
+  id: string
+  latencyMs: number | null
 }
 
 export interface Settings {
@@ -108,6 +120,8 @@ export const IpcChannels = {
   connCreate: 'conn:create',
   connUpdate: 'conn:update',
   connDelete: 'conn:delete',
+  connToggleFavorite: 'conn:toggle-favorite',
+  connProbe: 'conn:probe',
   groupList: 'group:list',
   groupCreate: 'group:create',
   groupUpdate: 'group:update',
@@ -173,6 +187,8 @@ export interface RendererApi {
   createConnection(input: ConnectionInput): Promise<ConnectionMeta>
   updateConnection(id: string, input: ConnectionInput): Promise<ConnectionMeta>
   deleteConnection(id: string): Promise<void>
+  toggleFavorite(id: string): Promise<ConnectionMeta>
+  probeConnections(targets: ProbeTarget[]): Promise<ProbeResult[]>
   listGroups(): Promise<ConnectionGroup[]>
   createGroup(name: string): Promise<ConnectionGroup>
   updateGroup(id: string, name: string): Promise<ConnectionGroup>

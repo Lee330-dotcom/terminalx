@@ -27,7 +27,7 @@ onMounted(() => {
     fontFamily: 'Menlo, Monaco, "Courier New", monospace',
     cursorBlink: true,
     scrollback: 5000,
-    theme: { background: '#1e1e1e' }
+    theme: { background: '#141414', cursor: '#10b981', cursorAccent: '#141414' }
   })
   fit = new FitAddon()
   term.loadAddon(fit)

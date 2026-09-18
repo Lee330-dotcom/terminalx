@@ -15,6 +15,8 @@ const api: RendererApi = {
   createConnection: (input) => ipcRenderer.invoke(IpcChannels.connCreate, input),
   updateConnection: (id, input) => ipcRenderer.invoke(IpcChannels.connUpdate, id, input),
   deleteConnection: (id) => ipcRenderer.invoke(IpcChannels.connDelete, id),
+  toggleFavorite: (id) => ipcRenderer.invoke(IpcChannels.connToggleFavorite, id),
+  probeConnections: (targets) => ipcRenderer.invoke(IpcChannels.connProbe, targets),
   listGroups: () => ipcRenderer.invoke(IpcChannels.groupList),
   createGroup: (name) => ipcRenderer.invoke(IpcChannels.groupCreate, name),
   updateGroup: (id, name) => ipcRenderer.invoke(IpcChannels.groupUpdate, id, name),
@@ -39,10 +41,8 @@ const api: RendererApi = {
     ipcRenderer.on(IpcChannels.evSessionStatus, listener)
     return () => ipcRenderer.removeListener(IpcChannels.evSessionStatus, listener)
   },
-  sftpList: (connectionId, path) =>
-    ipcRenderer.invoke(IpcChannels.sftpList, connectionId, path),
-  sftpMkdir: (connectionId, path) =>
-    ipcRenderer.invoke(IpcChannels.sftpMkdir, connectionId, path),
+  sftpList: (connectionId, path) => ipcRenderer.invoke(IpcChannels.sftpList, connectionId, path),
+  sftpMkdir: (connectionId, path) => ipcRenderer.invoke(IpcChannels.sftpMkdir, connectionId, path),
   sftpDelete: (connectionId, path) =>
     ipcRenderer.invoke(IpcChannels.sftpDelete, connectionId, path),
   sftpRename: (connectionId, from, to) =>

@@ -1,17 +1,22 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
-import { IpcChannels } from '@shared/types'
+import { IpcChannels, ProbeTarget } from '@shared/types'
 import { AppContext } from './appContext'
+import { probeTargets } from './ssh/latencyProbe'
 
 export function registerIpcHandlers(ctx: AppContext): void {
   ipcMain.handle(IpcChannels.ping, () => 'pong')
 
   // ---- 连接与分组 ----
-  ipcMain.handle(IpcChannels.connList, () => ctx.connections.listConnections())
+  ipcMain.handle(IpcChannels.connList, () =>
+    ctx.connections.listConnectionsWithStatus((id) => ctx.ssh.isOnline(id))
+  )
   ipcMain.handle(IpcChannels.connCreate, (_e, input) => ctx.connections.createConnection(input))
   ipcMain.handle(IpcChannels.connUpdate, (_e, id, input) =>
     ctx.connections.updateConnection(id, input)
   )
   ipcMain.handle(IpcChannels.connDelete, (_e, id) => ctx.connections.deleteConnection(id))
+  ipcMain.handle(IpcChannels.connToggleFavorite, (_e, id) => ctx.connections.toggleFavorite(id))
+  ipcMain.handle(IpcChannels.connProbe, (_e, targets: ProbeTarget[]) => probeTargets(targets))
 
   ipcMain.handle(IpcChannels.groupList, () => ctx.connections.listGroups())
   ipcMain.handle(IpcChannels.groupCreate, (_e, name) => ctx.connections.createGroup(name))

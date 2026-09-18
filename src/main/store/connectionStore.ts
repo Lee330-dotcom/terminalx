@@ -3,7 +3,7 @@ import {
   ConnectionGroup,
   ConnectionInput,
   ConnectionMeta,
-  ConnectionWithStatus,
+  ConnectionWithStatus
 } from '@shared/types'
 import { readJson, writeJsonAtomic } from './jsonFile'
 import { CredentialVault, SecretPayload } from './credentialVault'
@@ -20,7 +20,11 @@ export class ConnectionStore {
   ) {}
 
   private async load(): Promise<ConnectionsFile> {
-    return readJson<ConnectionsFile>(this.metaFile, { connections: [], groups: [] })
+    const data = await readJson<ConnectionsFile>(this.metaFile, { connections: [], groups: [] })
+    for (const c of data.connections) {
+      if (c.favorite == null) c.favorite = false
+    }
+    return data
   }
 
   private async save(data: ConnectionsFile): Promise<void> {
@@ -50,6 +54,7 @@ export class ConnectionStore {
       authType: input.authType,
       remark: input.remark ?? '',
       color: input.color ?? '#409eff',
+      favorite: false,
       createdAt: now,
       updatedAt: now
     }
@@ -102,6 +107,15 @@ export class ConnectionStore {
     data.connections = data.connections.filter((c) => c.id !== id)
     await this.save(data)
     await this.vault.delete(id)
+  }
+
+  async toggleFavorite(id: string): Promise<ConnectionMeta> {
+    const data = await this.load()
+    const conn = data.connections.find((c) => c.id === id)
+    if (!conn) throw new Error(`connection not found: ${id}`)
+    conn.favorite = !conn.favorite
+    await this.save(data)
+    return conn
   }
 
   async getSecret(id: string): Promise<SecretPayload | null> {
