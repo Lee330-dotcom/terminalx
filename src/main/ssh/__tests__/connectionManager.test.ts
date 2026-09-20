@@ -66,20 +66,33 @@ describe('ConnectionManager 集成', () => {
     await expect(manager.exec('conn-1', 'ls')).rejects.toThrow()
   })
 
-  it('连接复用：同一连接两次 exec 仅一次握手', async () => {
+  it('连接复用：同一连接两次 acquire 返回同一底层连接', async () => {
     const manager = makeManager('test-pass')
-    const client1 = await manager.acquire('conn-1')
-    const client2 = await manager.acquire('conn-1')
-    expect(client1).toBe(client2)
-    manager.release('conn-1')
-    manager.release('conn-1')
+    const h1 = await manager.acquire('conn-1')
+    const h2 = await manager.acquire('conn-1')
+    expect(h1.client).toBe(h2.client)
+    h1.release()
+    h2.release()
+    expect(manager.isOnline('conn-1')).toBe(false)
+  })
+
+  it('drop 后重新 acquire 获得新连接，旧句柄迟到的 release 不影响新连接', async () => {
+    const manager = makeManager('test-pass')
+    const h1 = await manager.acquire('conn-1')
+    h1.drop()
+    expect(manager.isOnline('conn-1')).toBe(false)
+    const h2 = await manager.acquire('conn-1')
+    expect(h2.client).not.toBe(h1.client)
+    h1.release()
+    expect(manager.isOnline('conn-1')).toBe(true)
+    h2.release()
     expect(manager.isOnline('conn-1')).toBe(false)
   })
 
   it('空闲超时后底层连接销毁', async () => {
     const manager = makeManager('test-pass')
-    await manager.acquire('conn-1')
-    manager.release('conn-1')
+    const handle = await manager.acquire('conn-1')
+    handle.release()
     await new Promise((r) => setTimeout(r, 400))
     expect(manager.isOnline('conn-1')).toBe(false)
   })

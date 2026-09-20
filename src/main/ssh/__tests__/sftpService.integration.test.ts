@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Client, Stats } from 'ssh2'
 import { TransferDoneEvent, TransferProgressEvent } from '@shared/types'
 import { SftpService, TransferEventSink } from '../sftpService'
-import { ConnectionManager } from '../connectionManager'
+import { ClientHandle, ConnectionManager } from '../connectionManager'
 
 interface FakeEntry {
   filename: string
@@ -103,11 +103,13 @@ class FakeConnections extends ConnectionManager {
       throw new Error('unused')
     })
   }
-  override async acquire(): Promise<Client> {
-    return makeClient(this.sftp)
-  }
-  override release(connectionId: string): void {
-    this.released.push(connectionId)
+  override async acquire(connectionId: string): Promise<ClientHandle> {
+    const client = makeClient(this.sftp)
+    return {
+      client,
+      release: () => this.released.push(connectionId),
+      drop: () => this.released.push(connectionId)
+    }
   }
 }
 

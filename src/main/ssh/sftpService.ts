@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { createReadStream, createWriteStream, statSync, unlink } from 'fs'
 import { posix } from 'path'
-import { Client, SFTPWrapper } from 'ssh2'
+import { SFTPWrapper } from 'ssh2'
 import {
   SftpEntry,
   SftpListResult,
@@ -79,15 +79,14 @@ export class SftpService {
   private async openSftp(
     connectionId: string
   ): Promise<{ sftp: SFTPWrapper; release: () => void }> {
-    const client: Client = await this.ssh.acquire(connectionId)
-    const release = (): void => this.ssh.release(connectionId)
+    const handle = await this.ssh.acquire(connectionId)
     try {
       const sftp = await new Promise<SFTPWrapper>((resolvePromise, reject) => {
-        client.sftp((err, s) => (err ? reject(err) : resolvePromise(s)))
+        handle.client.sftp((err, s) => (err ? reject(err) : resolvePromise(s)))
       })
-      return { sftp, release }
+      return { sftp, release: () => handle.release() }
     } catch (err) {
-      release()
+      handle.release()
       throw err
     }
   }

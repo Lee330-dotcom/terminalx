@@ -5,7 +5,6 @@ interface ManagedClient {
   client: Client
   refCount: number
   destroyTimer?: NodeJS.Timeout
-  lastError?: Error
 }
 
 const IDLE_DESTROY_MS = 60_000
@@ -28,6 +27,18 @@ export function describeSshError(err: Error & { level?: string; code?: string })
     default:
       return err.message || '连接失败'
   }
+}
+
+/**
+ * 连接句柄：绑定到池中某一个具体连接实例。即使该连接后来被销毁、
+ * 被新连接替换，迟到的 release/drop 也不会误伤新连接。
+ */
+export interface ClientHandle {
+  client: Client
+  /** 释放引用；引用归零后延迟空闲销毁，可被后续操作复用 */
+  release(): void
+  /** 立即销毁并移出连接池（远端会话已终止时使用，防止复用濒死连接） */
+  drop(): void
 }
 
 /**
@@ -57,7 +68,34 @@ export class ConnectionManager {
     })
   }
 
-  async acquire(connectionId: string): Promise<Client> {
+  private destroy(connectionId: string, managed: ManagedClient): void {
+    if (this.clients.get(connectionId) !== managed) return
+    if (managed.destroyTimer) {
+      clearTimeout(managed.destroyTimer)
+      managed.destroyTimer = undefined
+    }
+    this.clients.delete(connectionId)
+    managed.client.end()
+  }
+
+  private handleFor(connectionId: string, managed: ManagedClient): ClientHandle {
+    return {
+      client: managed.client,
+      release: () => {
+        if (this.clients.get(connectionId) !== managed) return
+        managed.refCount = Math.max(0, managed.refCount - 1)
+        if (managed.refCount === 0 && !managed.destroyTimer) {
+          managed.destroyTimer = setTimeout(
+            () => this.destroy(connectionId, managed),
+            this.idleDestroyMs
+          )
+        }
+      },
+      drop: () => this.destroy(connectionId, managed)
+    }
+  }
+
+  async acquire(connectionId: string): Promise<ClientHandle> {
     const existing = this.clients.get(connectionId)
     if (existing) {
       existing.refCount++
@@ -65,26 +103,21 @@ export class ConnectionManager {
         clearTimeout(existing.destroyTimer)
         existing.destroyTimer = undefined
       }
-      return existing.client
+      return this.handleFor(connectionId, existing)
     }
     const config = await this.buildConfig(connectionId)
     const client = await this.connect(config)
     const managed: ManagedClient = { client, refCount: 1 }
-    client.on('close', () => this.clients.delete(connectionId))
-    this.clients.set(connectionId, managed)
-    return client
-  }
-
-  release(connectionId: string): void {
-    const managed = this.clients.get(connectionId)
-    if (!managed) return
-    managed.refCount = Math.max(0, managed.refCount - 1)
-    if (managed.refCount === 0) {
-      managed.destroyTimer = setTimeout(() => {
-        managed.client.end()
+    // 池化连接常驻 error 监听：keepalive 超时（client-timeout）等错误
+    // 没有监听器会变成未处理异常导致主进程崩溃
+    client.on('error', () => this.destroy(connectionId, managed))
+    client.on('close', () => {
+      if (this.clients.get(connectionId) === managed) {
         this.clients.delete(connectionId)
-      }, this.idleDestroyMs)
-    }
+      }
+    })
+    this.clients.set(connectionId, managed)
+    return this.handleFor(connectionId, managed)
   }
 
   isOnline(connectionId: string): boolean {
@@ -97,11 +130,11 @@ export class ConnectionManager {
     command: string,
     timeoutMs = EXEC_TIMEOUT_MS
   ): Promise<ExecCommandResult> {
-    const client = await this.acquire(connectionId)
+    const handle = await this.acquire(connectionId)
     const started = Date.now()
     try {
       return await new Promise<ExecCommandResult>((resolvePromise, reject) => {
-        client.exec(command, (err, stream) => {
+        handle.client.exec(command, (err, stream) => {
           if (err) {
             reject(err)
             return
@@ -129,16 +162,12 @@ export class ConnectionManager {
         })
       })
     } finally {
-      this.release(connectionId)
+      handle.release()
     }
   }
 }
 
-/** 独立的 shell 通道句柄，由 SessionManager 管理。 */
-export interface ShellHandle {
-  stream: ClientChannel
-}
-
+/** 在已连接的 client 上打开交互 shell 通道。 */
 export async function openShell(
   client: Client,
   cols: number,

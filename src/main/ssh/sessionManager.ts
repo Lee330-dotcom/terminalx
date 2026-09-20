@@ -2,7 +2,12 @@ import { randomUUID } from 'crypto'
 import { StringDecoder } from 'string_decoder'
 import { ClientChannel } from 'ssh2'
 import { SessionInfo, SessionStatus } from '@shared/types'
-import { ConnectionManager, describeSshError, openShell } from './connectionManager'
+import {
+  ClientHandle,
+  ConnectionManager,
+  describeSshError,
+  openShell
+} from './connectionManager'
 
 const MAX_SCROLLBACK_LINES = 10_000
 const FLUSH_INTERVAL_MS = 16
@@ -18,6 +23,7 @@ interface TerminalSession {
   status: SessionStatus
   errorMessage?: string
   stream: ClientChannel | null
+  handle: ClientHandle | null
   scrollback: string[]
   decoder: StringDecoder
   /** 待推送的字节缓冲（16ms 合并窗口） */
@@ -69,6 +75,7 @@ export class SessionManager {
       connectionId,
       status: 'connecting',
       stream: null,
+      handle: null,
       scrollback: [],
       decoder: new StringDecoder('utf8'),
       pending: [],
@@ -81,9 +88,22 @@ export class SessionManager {
   }
 
   private async attachShell(session: TerminalSession): Promise<void> {
+    let handle: ClientHandle | null = null
     try {
-      const client = await this.connections.acquire(session.connectionId)
-      const stream = await openShell(client, 80, 24)
+      handle = await this.connections.acquire(session.connectionId)
+      if (!this.sessions.has(session.id)) {
+        // 会话在连接建立期间被用户关闭
+        handle.release()
+        return
+      }
+      const stream = await openShell(handle.client, 80, 24)
+      if (!this.sessions.has(session.id)) {
+        // 会话在通道打开期间被用户关闭
+        stream.close()
+        handle.release()
+        return
+      }
+      session.handle = handle
       session.stream = stream
       this.setStatus(session, 'connected')
       stream.on('data', (d: Buffer) => {
@@ -92,9 +112,16 @@ export class SessionManager {
       })
       stream.on('close', () => {
         this.flush(session)
+        handle?.release()
+        // 迟到的旧通道 close（重连后旧 stream 才关闭）：
+        // session.stream 已被新通道替换，此时不得清理新通道、也不得改状态
+        if (session.stream !== stream) return
         session.stream = null
-        this.connections.release(session.connectionId)
+        session.handle = null
         if (!session.closedByUser) {
+          // 远端主动断开说明会话已终止（堡垒机会整体拆除 SSH 会话），
+          // 立即销毁底层连接，避免重连时复用濒死连接
+          handle?.drop()
           this.setStatus(session, 'disconnected')
         }
       })
@@ -102,8 +129,9 @@ export class SessionManager {
         /* close 事件会跟随触发，统一在 close 中处理 */
       })
     } catch (err) {
+      handle?.release()
       session.stream = null
-      this.connections.release(session.connectionId)
+      session.handle = null
       this.setStatus(session, 'error', describeSshError(err as Error))
     }
   }
@@ -136,6 +164,10 @@ export class SessionManager {
       session.stream.end()
       session.stream = null
     }
+    // 旧连接立即销毁：远端（堡垒机）会在通道关闭后拆除整个 SSH 会话，
+    // 复用旧 client 重开通道会得到「先连通、随后被远端关闭」的假连接
+    session.handle?.drop()
+    session.handle = null
     session.closedByUser = false
     this.setStatus(session, 'connecting')
     await this.attachShell(session)

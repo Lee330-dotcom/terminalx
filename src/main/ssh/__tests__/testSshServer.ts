@@ -34,13 +34,15 @@ export function startTestSshServer(): Promise<TestSshServer> {
             session.on('shell', (acceptShell) => {
               const stream = acceptShell()
               stream.write('welcome to test server\r\n$ ')
+              // xterm 逐键发送输入，exit 可能被拆成多个 chunk，需累积判断
+              let accumulated = ''
               stream.on('data', (d: Buffer) => {
                 const input = d.toString()
-                if (input.includes('exit')) {
+                stream.write(input)
+                accumulated += input
+                if (accumulated.includes('exit')) {
                   stream.exit(0)
                   stream.end()
-                } else {
-                  stream.write(input)
                 }
               })
             })
