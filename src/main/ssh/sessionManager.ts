@@ -2,12 +2,12 @@ import { randomUUID } from 'crypto'
 import { StringDecoder } from 'string_decoder'
 import { ClientChannel } from 'ssh2'
 import { SessionInfo, SessionStatus } from '@shared/types'
+import { ClientHandle, ConnectionManager, describeSshError, openShell } from './connectionManager'
 import {
-  ClientHandle,
-  ConnectionManager,
-  describeSshError,
-  openShell
-} from './connectionManager'
+  buildSetupPayload,
+  createSetupEchoSuppressor,
+  looksLikeShellPrompt
+} from './echoSuppressor'
 
 const MAX_SCROLLBACK_LINES = 10_000
 const FLUSH_INTERVAL_MS = 16
@@ -93,22 +93,38 @@ export class SessionManager {
       handle = await this.connections.acquire(session.connectionId)
       if (!this.sessions.has(session.id)) {
         // 会话在连接建立期间被用户关闭
-        handle.release()
+        handle.drop()
         return
       }
       const stream = await openShell(handle.client, 80, 24)
       if (!this.sessions.has(session.id)) {
         // 会话在通道打开期间被用户关闭
         stream.close()
-        handle.release()
+        handle.drop()
         return
       }
       session.handle = handle
       session.stream = stream
+      // 染色初始化：等远端出现 shell 提示符再写入（堡垒机握手/菜单阶段
+      // 写入会被吞掉甚至拆会话）；回显由抑制器在数据路径上剥掉
+      const suppressor = createSetupEchoSuppressor()
+      const setupPayload = buildSetupPayload()
+      let setupSent = false
+      let tailText = ''
       this.setStatus(session, 'connected')
       stream.on('data', (d: Buffer) => {
-        session.pending.push(d)
-        this.scheduleFlush(session)
+        if (!setupSent) {
+          tailText = (tailText + d.toString('utf8')).slice(-200)
+          if (looksLikeShellPrompt(tailText)) {
+            setupSent = true
+            stream.write(setupPayload)
+          }
+        }
+        const out = suppressor.push(d)
+        if (out && out.length > 0) {
+          session.pending.push(out)
+          this.scheduleFlush(session)
+        }
       })
       stream.on('close', () => {
         this.flush(session)
@@ -153,6 +169,10 @@ export class SessionManager {
     this.flush(session)
     session.stream?.end()
     session.stream = null
+    // 用户明确关闭会话时立即销毁底层 client，避免旧 shell 通道
+    // 在服务端尚未释放时被下一次连接复用。
+    session.handle?.drop()
+    session.handle = null
     this.sessions.delete(sessionId)
   }
 
