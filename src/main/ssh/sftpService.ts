@@ -79,12 +79,23 @@ export class SftpService {
   private async openSftp(
     connectionId: string
   ): Promise<{ sftp: SFTPWrapper; release: () => void }> {
-    const handle = await this.ssh.acquire(connectionId)
+    const handle = await this.ssh.acquireIsolated(connectionId)
     try {
       const sftp = await new Promise<SFTPWrapper>((resolvePromise, reject) => {
         handle.client.sftp((err, s) => (err ? reject(err) : resolvePromise(s)))
       })
-      return { sftp, release: () => handle.release() }
+      let released = false
+      return {
+        sftp,
+        release: () => {
+          if (released) return
+          released = true
+          // SFTP 通道与 shell 共享底层 SSH client，操作完成后必须显式关闭，
+          // 否则重复打开会触发服务端的 channelOpen too often 限制。
+          sftp.end()
+          handle.release()
+        }
+      }
     } catch (err) {
       handle.release()
       throw err

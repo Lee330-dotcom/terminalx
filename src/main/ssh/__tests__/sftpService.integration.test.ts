@@ -87,6 +87,9 @@ class FakeSftp {
     this.activeWriters.push(ws)
     return ws
   }
+  end(): void {
+    // no-op
+  }
 }
 
 function makeClient(sftp: FakeSftp): Client {
@@ -110,6 +113,9 @@ class FakeConnections extends ConnectionManager {
       release: () => this.released.push(connectionId),
       drop: () => this.released.push(connectionId)
     }
+  }
+  override async acquireIsolated(connectionId: string): Promise<ClientHandle> {
+    return this.acquire(connectionId)
   }
 }
 

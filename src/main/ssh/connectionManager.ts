@@ -120,6 +120,25 @@ export class ConnectionManager {
     return this.handleFor(connectionId, managed)
   }
 
+  /**
+   * 创建不进入连接池的独立 client，供 SFTP 等可能受服务端 channel
+   * 限制影响的功能使用，避免与交互式 shell 共用 session 通道。
+   */
+  async acquireIsolated(connectionId: string): Promise<ClientHandle> {
+    const config = await this.buildConfig(connectionId)
+    const client = await this.connect(config)
+    let closed = false
+    const close = (): void => {
+      if (closed) return
+      closed = true
+      client.end()
+    }
+    client.on('error', () => {
+      // 独立 client 的错误由当前 SFTP 操作接收，避免成为未处理异常。
+    })
+    return { client, release: close, drop: close }
+  }
+
   isOnline(connectionId: string): boolean {
     const managed = this.clients.get(connectionId)
     return managed != null && managed.refCount > 0
