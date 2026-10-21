@@ -254,422 +254,424 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
-  <div v-if="visible" class="settings-overlay">
-    <aside class="settings-sidebar">
-      <div class="sidebar-title">{{ t('settings.title') }}</div>
-      <el-input
-        v-model="searchQuery"
-        class="sidebar-search"
-        :placeholder="t('settings.searchPlaceholder')"
-        :prefix-icon="Search"
-        clearable
-      />
-      <div
-        v-for="sec in filteredSections"
-        :key="sec.id"
-        class="nav-item"
-        :class="{ active: activeSection === sec.id }"
-        @click="activeSection = sec.id"
-      >
-        <el-icon :size="15"><component :is="sec.icon" /></el-icon>
-        <span>{{ t(sec.key) }}</span>
-      </div>
-      <div v-if="filteredSections.length === 0" class="nav-hint">无匹配项</div>
-    </aside>
-
-    <div class="settings-content">
-      <header class="settings-header">
-        <span class="header-title">
-          {{ t(sections.find((s) => s.id === activeSection)?.key ?? '') }}
-        </span>
-        <div class="header-actions">
-          <el-button v-if="activeSection === 'theme'" size="small" text @click="restoreDefault">
-            {{ t('theme.restoreDefault') }}
-          </el-button>
-          <el-button text circle class="close-btn" @click="emit('update:visible', false)">
-            <el-icon :size="16"><Close /></el-icon>
-          </el-button>
+  <div v-if="visible" class="settings-overlay" @click.self="emit('update:visible', false)">
+    <div class="settings-window">
+      <aside class="settings-sidebar">
+        <div class="sidebar-title">{{ t('settings.title') }}</div>
+        <el-input
+          v-model="searchQuery"
+          class="sidebar-search"
+          :placeholder="t('settings.searchPlaceholder')"
+          :prefix-icon="Search"
+          clearable
+        />
+        <div
+          v-for="sec in filteredSections"
+          :key="sec.id"
+          class="nav-item"
+          :class="{ active: activeSection === sec.id }"
+          @click="activeSection = sec.id"
+        >
+          <el-icon :size="15"><component :is="sec.icon" /></el-icon>
+          <span>{{ t(sec.key) }}</span>
         </div>
-      </header>
+        <div v-if="filteredSections.length === 0" class="nav-hint">无匹配项</div>
+      </aside>
 
-      <div class="settings-scroll">
-        <!-- 主题界面 -->
-        <template v-if="activeSection === 'theme' && settings">
-          <div class="settings-card">
-            <div class="card-title">{{ t('theme.bgPresets') }}</div>
-            <div class="setting-desc">{{ t('theme.bgPresetsDesc') }}</div>
-            <div class="preset-grid">
-              <div
-                v-for="p in THEME_PRESETS"
-                :key="p.id"
-                class="preset-tile"
-                :class="{ active: isPresetActive(p) }"
-                @click="
-                  save({
-                    themeColor: p.themeColor,
-                    backgroundColor: p.backgroundColor,
-                    navColor: p.navColor
-                  })
-                "
-              >
-                <div class="preset-preview" :style="{ background: p.backgroundColor }">
-                  <span class="preset-nav" :style="{ background: p.navColor }" />
-                  <span class="preset-dot" :style="{ background: p.themeColor }" />
+      <div class="settings-content">
+        <header class="settings-header">
+          <span class="header-title">
+            {{ t(sections.find((s) => s.id === activeSection)?.key ?? '') }}
+          </span>
+          <div class="header-actions">
+            <el-button v-if="activeSection === 'theme'" size="small" text @click="restoreDefault">
+              {{ t('theme.restoreDefault') }}
+            </el-button>
+            <el-button text circle class="close-btn" @click="emit('update:visible', false)">
+              <el-icon :size="16"><Close /></el-icon>
+            </el-button>
+          </div>
+        </header>
+
+        <div class="settings-scroll">
+          <!-- 主题界面 -->
+          <template v-if="activeSection === 'theme' && settings">
+            <div class="settings-card">
+              <div class="card-title">{{ t('theme.bgPresets') }}</div>
+              <div class="setting-desc">{{ t('theme.bgPresetsDesc') }}</div>
+              <div class="preset-grid">
+                <div
+                  v-for="p in THEME_PRESETS"
+                  :key="p.id"
+                  class="preset-tile"
+                  :class="{ active: isPresetActive(p) }"
+                  @click="
+                    save({
+                      themeColor: p.themeColor,
+                      backgroundColor: p.backgroundColor,
+                      navColor: p.navColor
+                    })
+                  "
+                >
+                  <div class="preset-preview" :style="{ background: p.backgroundColor }">
+                    <span class="preset-nav" :style="{ background: p.navColor }" />
+                    <span class="preset-dot" :style="{ background: p.themeColor }" />
+                  </div>
+                  <span class="preset-name">{{ t('preset.' + p.id) }}</span>
                 </div>
-                <span class="preset-name">{{ t('preset.' + p.id) }}</span>
               </div>
             </div>
-          </div>
 
-          <div class="settings-card">
-            <div class="card-title">{{ t('theme.themeColor') }}</div>
-            <div class="setting-desc">{{ t('theme.themeColorDesc') }}</div>
-            <div class="swatch-row">
-              <div
-                v-for="c in themePresets"
-                :key="c"
-                class="swatch"
-                :class="{ active: settings.themeColor === c }"
-                :style="{ background: c }"
-                @click="save({ themeColor: c })"
-              >
-                <el-icon v-if="settings.themeColor === c" :size="13" color="var(--tx-text)">
-                  <Check />
-                </el-icon>
-              </div>
-              <el-color-picker
-                :model-value="settings.themeColor"
-                @change="(v) => v && save({ themeColor: v })"
-              />
-              <span class="color-value">{{ settings.themeColor }}</span>
-            </div>
-          </div>
-
-          <div class="settings-card">
-            <div class="card-title">{{ t('theme.bgColor') }}</div>
-            <div class="setting-desc">{{ t('theme.bgColorDesc') }}</div>
-            <div class="swatch-row">
-              <div
-                v-for="c in bgPresets"
-                :key="c"
-                class="swatch"
-                :class="{ active: settings.backgroundColor === c }"
-                :style="{ background: c }"
-                @click="save({ backgroundColor: c })"
-              >
-                <el-icon v-if="settings.backgroundColor === c" :size="13" color="var(--tx-text)">
-                  <Check />
-                </el-icon>
-              </div>
-              <el-color-picker
-                :model-value="settings.backgroundColor"
-                @change="(v) => v && save({ backgroundColor: v })"
-              />
-              <span class="color-value">{{ settings.backgroundColor }}</span>
-            </div>
-          </div>
-
-          <div class="settings-card">
-            <div class="card-title">{{ t('theme.navColor') }}</div>
-            <div class="setting-desc">{{ t('theme.navColorDesc') }}</div>
-            <div class="swatch-row">
-              <div
-                v-for="c in themePresets"
-                :key="c"
-                class="swatch"
-                :class="{ active: settings.navColor === c }"
-                :style="{ background: c }"
-                @click="save({ navColor: c })"
-              >
-                <el-icon v-if="settings.navColor === c" :size="13" color="var(--tx-text)">
-                  <Check />
-                </el-icon>
-              </div>
-              <el-color-picker
-                :model-value="settings.navColor"
-                @change="(v) => v && save({ navColor: v })"
-              />
-              <span class="color-value">{{ settings.navColor }}</span>
-            </div>
-          </div>
-
-          <div class="settings-card">
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">{{ t('theme.followSystem') }}</div>
-                <div class="setting-desc">{{ t('theme.followSystemDesc') }}</div>
-              </div>
-              <el-switch
-                :model-value="settings.followSystemTheme"
-                @change="(v) => save({ followSystemTheme: v as boolean })"
-              />
-            </div>
-          </div>
-
-          <div class="settings-card">
-            <div class="card-title">{{ t('theme.ui') }}</div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">{{ t('theme.uiFont') }}</div>
-                <div class="setting-desc">{{ t('theme.uiFontDesc') }}</div>
-              </div>
-              <el-select
-                v-model="uiFont"
-                :placeholder="t('theme.systemDefault')"
-                style="width: 180px"
-                @change="save({ uiFont })"
-              >
-                <el-option
-                  v-for="f in fontOptions"
-                  :key="f.label"
-                  :label="f.label"
-                  :value="f.value"
-                />
-              </el-select>
-            </div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">{{ t('theme.opacity') }}</div>
-                <div class="setting-desc">{{ t('theme.opacityDesc') }}</div>
-              </div>
-              <div class="slider-wrap">
-                <el-slider
-                  v-model="windowOpacity"
-                  :min="60"
-                  :max="100"
-                  style="width: 220px"
-                  @change="save({ windowOpacity })"
-                />
-                <span class="slider-value">{{ windowOpacity }}%</span>
-              </div>
-            </div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">{{ t('theme.scale') }}</div>
-                <div class="setting-desc">{{ t('theme.scaleDesc') }}</div>
-              </div>
-              <div class="slider-wrap">
-                <el-slider
-                  v-model="uiScale"
-                  :min="80"
-                  :max="140"
-                  :step="5"
-                  style="width: 220px"
-                  @change="save({ uiScale })"
-                />
-                <span class="slider-value">{{ uiScale }}%</span>
-              </div>
-            </div>
-          </div>
-        </template>
-
-        <!-- 软件更新 -->
-        <template v-if="activeSection === 'update'">
-          <div class="settings-card">
-            <div class="card-title">{{ t('update.currentVersion') }}</div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">
-                  terminalX {{ appInfo ? `v${appInfo.version}` : '…' }}
+            <div class="settings-card">
+              <div class="card-title">{{ t('theme.themeColor') }}</div>
+              <div class="setting-desc">{{ t('theme.themeColorDesc') }}</div>
+              <div class="swatch-row">
+                <div
+                  v-for="c in themePresets"
+                  :key="c"
+                  class="swatch"
+                  :class="{ active: settings.themeColor === c }"
+                  :style="{ background: c }"
+                  @click="save({ themeColor: c })"
+                >
+                  <el-icon v-if="settings.themeColor === c" :size="13" color="var(--tx-text)">
+                    <Check />
+                  </el-icon>
                 </div>
-                <div class="setting-desc">{{ t('update.channel') }}</div>
+                <el-color-picker
+                  :model-value="settings.themeColor"
+                  @change="(v) => v && save({ themeColor: v })"
+                />
+                <span class="color-value">{{ settings.themeColor }}</span>
               </div>
-              <el-button type="primary" @click="checkUpdate">{{ t('update.check') }}</el-button>
             </div>
-          </div>
-          <div class="settings-card">
-            <div class="card-title">{{ t('update.log') }}</div>
-            <div v-for="item in changelog" :key="item.version" class="changelog-item">
-              <div class="changelog-head">
-                <span class="changelog-version">{{ item.version }}</span>
-                <span class="changelog-date">{{ item.date }}</span>
-              </div>
-              <ul class="changelog-list">
-                <li v-for="line in item.items" :key="line">{{ line }}</li>
-              </ul>
-            </div>
-          </div>
-        </template>
 
-        <!-- MCP 服务 -->
-        <template v-if="activeSection === 'mcp' && settings">
-          <div class="settings-card">
-            <div class="card-title">{{ t('mcp.basic') }}</div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">{{ t('mcp.enable') }}</div>
-                <div class="setting-desc">{{ t('mcp.enableDesc') }}</div>
-              </div>
-              <el-switch
-                :model-value="settings.mcpEnabled"
-                @change="(v) => save({ mcpEnabled: v as boolean })"
-              />
-            </div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">{{ t('mcp.port') }}</div>
-                <div class="setting-desc">{{ t('mcp.portDesc') }}</div>
-              </div>
-              <el-input-number
-                v-model="mcpPort"
-                :min="1024"
-                :max="65535"
-                @change="save({ mcpPort })"
-              />
-            </div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">{{ t('mcp.url') }}</div>
-                <div class="setting-desc">{{ t('mcp.urlDesc') }}</div>
-              </div>
-              <div class="url-row">
-                <code class="url-text">http://127.0.0.1:{{ mcpPort }}/mcp</code>
-                <el-button size="small" @click="copyUrl">{{ t('mcp.copy') }}</el-button>
+            <div class="settings-card">
+              <div class="card-title">{{ t('theme.bgColor') }}</div>
+              <div class="setting-desc">{{ t('theme.bgColorDesc') }}</div>
+              <div class="swatch-row">
+                <div
+                  v-for="c in bgPresets"
+                  :key="c"
+                  class="swatch"
+                  :class="{ active: settings.backgroundColor === c }"
+                  :style="{ background: c }"
+                  @click="save({ backgroundColor: c })"
+                >
+                  <el-icon v-if="settings.backgroundColor === c" :size="13" color="var(--tx-text)">
+                    <Check />
+                  </el-icon>
+                </div>
+                <el-color-picker
+                  :model-value="settings.backgroundColor"
+                  @change="(v) => v && save({ backgroundColor: v })"
+                />
+                <span class="color-value">{{ settings.backgroundColor }}</span>
               </div>
             </div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">{{ t('mcp.token') }}</div>
-                <div class="setting-desc">{{ t('mcp.tokenDesc') }}</div>
-              </div>
-              <div class="token-row">
-                <code class="token-text">
-                  {{ showToken ? settings.mcpToken : '•'.repeat(32) }}
-                </code>
-                <el-button size="small" text @click="showToken = !showToken">
-                  {{ showToken ? t('mcp.hide') : t('mcp.show') }}
-                </el-button>
-                <el-button size="small" @click="copyToken">{{ t('mcp.copy') }}</el-button>
-                <el-button size="small" type="danger" plain @click="regenerate">
-                  {{ t('mcp.regenerate') }}
-                </el-button>
-              </div>
-            </div>
-          </div>
 
-          <div class="settings-card">
-            <div class="card-title-row">
-              <span class="card-title">{{ t('mcp.tools') }}</span>
-              <span class="tool-count">
-                {{ t('mcp.enabledCount', { n: enabledToolCount, total: 7 }) }}
-              </span>
+            <div class="settings-card">
+              <div class="card-title">{{ t('theme.navColor') }}</div>
+              <div class="setting-desc">{{ t('theme.navColorDesc') }}</div>
+              <div class="swatch-row">
+                <div
+                  v-for="c in themePresets"
+                  :key="c"
+                  class="swatch"
+                  :class="{ active: settings.navColor === c }"
+                  :style="{ background: c }"
+                  @click="save({ navColor: c })"
+                >
+                  <el-icon v-if="settings.navColor === c" :size="13" color="var(--tx-text)">
+                    <Check />
+                  </el-icon>
+                </div>
+                <el-color-picker
+                  :model-value="settings.navColor"
+                  @change="(v) => v && save({ navColor: v })"
+                />
+                <span class="color-value">{{ settings.navColor }}</span>
+              </div>
             </div>
-            <div class="setting-desc" style="margin-bottom: 6px">
-              {{ t('mcp.toolsDesc') }}
-            </div>
-            <div v-for="group in toolGroups" :key="group.nameKey">
-              <div class="tool-group-name">{{ t(group.nameKey) }}</div>
-              <div v-for="tool in group.tools" :key="tool.name" class="tool-row">
-                <div class="tool-info">
-                  <span class="tool-name">{{ tool.name }}</span>
-                  <span class="tool-desc">{{ t(tool.descKey) }}</span>
+
+            <div class="settings-card">
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">{{ t('theme.followSystem') }}</div>
+                  <div class="setting-desc">{{ t('theme.followSystemDesc') }}</div>
                 </div>
                 <el-switch
-                  :model-value="isToolEnabled(tool.name)"
-                  @change="(v) => toggleTool(tool.name, v as boolean)"
+                  :model-value="settings.followSystemTheme"
+                  @change="(v) => save({ followSystemTheme: v as boolean })"
                 />
               </div>
             </div>
-          </div>
-        </template>
 
-        <!-- 备份恢复 -->
-        <template v-if="activeSection === 'backup'">
-          <div class="settings-card">
-            <div class="card-title">{{ t('backup.export') }}</div>
-            <div class="setting-desc">{{ t('backup.exportDesc') }}</div>
-            <div style="margin-top: 12px">
-              <el-button type="primary" @click="exportSettings">
-                {{ t('backup.exportBtn') }}
-              </el-button>
+            <div class="settings-card">
+              <div class="card-title">{{ t('theme.ui') }}</div>
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">{{ t('theme.uiFont') }}</div>
+                  <div class="setting-desc">{{ t('theme.uiFontDesc') }}</div>
+                </div>
+                <el-select
+                  v-model="uiFont"
+                  :placeholder="t('theme.systemDefault')"
+                  style="width: 180px"
+                  @change="save({ uiFont })"
+                >
+                  <el-option
+                    v-for="f in fontOptions"
+                    :key="f.label"
+                    :label="f.label"
+                    :value="f.value"
+                  />
+                </el-select>
+              </div>
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">{{ t('theme.opacity') }}</div>
+                  <div class="setting-desc">{{ t('theme.opacityDesc') }}</div>
+                </div>
+                <div class="slider-wrap">
+                  <el-slider
+                    v-model="windowOpacity"
+                    :min="60"
+                    :max="100"
+                    style="width: 220px"
+                    @change="save({ windowOpacity })"
+                  />
+                  <span class="slider-value">{{ windowOpacity }}%</span>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">{{ t('theme.scale') }}</div>
+                  <div class="setting-desc">{{ t('theme.scaleDesc') }}</div>
+                </div>
+                <div class="slider-wrap">
+                  <el-slider
+                    v-model="uiScale"
+                    :min="80"
+                    :max="140"
+                    :step="5"
+                    style="width: 220px"
+                    @change="save({ uiScale })"
+                  />
+                  <span class="slider-value">{{ uiScale }}%</span>
+                </div>
+              </div>
             </div>
-          </div>
-          <div class="settings-card">
-            <div class="card-title">{{ t('backup.import') }}</div>
-            <div class="setting-desc">{{ t('backup.importDesc') }}</div>
-            <div style="margin-top: 12px">
-              <el-button @click="importSettings">{{ t('backup.importBtn') }}</el-button>
-            </div>
-          </div>
-        </template>
+          </template>
 
-        <!-- 系统配置 -->
-        <template v-if="activeSection === 'system' && settings">
-          <div class="settings-card">
-            <div class="card-title">{{ t('system.startup') }}</div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">{{ t('system.autoLaunch') }}</div>
-                <div class="setting-desc">{{ t('system.autoLaunchDesc') }}</div>
+          <!-- 软件更新 -->
+          <template v-if="activeSection === 'update'">
+            <div class="settings-card">
+              <div class="card-title">{{ t('update.currentVersion') }}</div>
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">
+                    terminalX {{ appInfo ? `v${appInfo.version}` : '…' }}
+                  </div>
+                  <div class="setting-desc">{{ t('update.channel') }}</div>
+                </div>
+                <el-button type="primary" @click="checkUpdate">{{ t('update.check') }}</el-button>
               </div>
-              <el-switch
-                :model-value="settings.autoLaunch"
-                @change="(v) => save({ autoLaunch: v as boolean })"
-              />
             </div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">{{ t('system.blockSleep') }}</div>
-                <div class="setting-desc">{{ t('system.blockSleepDesc') }}</div>
+            <div class="settings-card">
+              <div class="card-title">{{ t('update.log') }}</div>
+              <div v-for="item in changelog" :key="item.version" class="changelog-item">
+                <div class="changelog-head">
+                  <span class="changelog-version">{{ item.version }}</span>
+                  <span class="changelog-date">{{ item.date }}</span>
+                </div>
+                <ul class="changelog-list">
+                  <li v-for="line in item.items" :key="line">{{ line }}</li>
+                </ul>
               </div>
-              <el-switch
-                :model-value="settings.blockSystemSleep"
-                @change="(v) => save({ blockSystemSleep: v as boolean })"
-              />
             </div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">{{ t('system.noHardwareAccel') }}</div>
-                <div class="setting-desc">{{ t('system.noHardwareAccelDesc') }}</div>
-              </div>
-              <el-switch
-                :model-value="settings.disableHardwareAcceleration"
-                @change="(v) => save({ disableHardwareAcceleration: v as boolean })"
-              />
-            </div>
-          </div>
+          </template>
 
-          <div class="settings-card">
-            <div class="card-title">{{ t('system.window') }}</div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">{{ t('system.closeAction') }}</div>
-                <div class="setting-desc">{{ t('system.closeActionDesc') }}</div>
+          <!-- MCP 服务 -->
+          <template v-if="activeSection === 'mcp' && settings">
+            <div class="settings-card">
+              <div class="card-title">{{ t('mcp.basic') }}</div>
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">{{ t('mcp.enable') }}</div>
+                  <div class="setting-desc">{{ t('mcp.enableDesc') }}</div>
+                </div>
+                <el-switch
+                  :model-value="settings.mcpEnabled"
+                  @change="(v) => save({ mcpEnabled: v as boolean })"
+                />
               </div>
-              <el-radio-group v-model="closeButtonAction" @change="save({ closeButtonAction })">
-                <el-radio value="hide">{{ t('system.hideToDock') }}</el-radio>
-                <el-radio value="quit">{{ t('system.quit') }}</el-radio>
-              </el-radio-group>
-            </div>
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">{{ t('system.confirmOnClose') }}</div>
-                <div class="setting-desc">{{ t('system.confirmOnCloseDesc') }}</div>
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">{{ t('mcp.port') }}</div>
+                  <div class="setting-desc">{{ t('mcp.portDesc') }}</div>
+                </div>
+                <el-input-number
+                  v-model="mcpPort"
+                  :min="1024"
+                  :max="65535"
+                  @change="save({ mcpPort })"
+                />
               </div>
-              <el-switch
-                :model-value="settings.confirmOnClose"
-                @change="(v) => save({ confirmOnClose: v as boolean })"
-              />
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">{{ t('mcp.url') }}</div>
+                  <div class="setting-desc">{{ t('mcp.urlDesc') }}</div>
+                </div>
+                <div class="url-row">
+                  <code class="url-text">http://127.0.0.1:{{ mcpPort }}/mcp</code>
+                  <el-button size="small" @click="copyUrl">{{ t('mcp.copy') }}</el-button>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">{{ t('mcp.token') }}</div>
+                  <div class="setting-desc">{{ t('mcp.tokenDesc') }}</div>
+                </div>
+                <div class="token-row">
+                  <code class="token-text">
+                    {{ showToken ? settings.mcpToken : '•'.repeat(32) }}
+                  </code>
+                  <el-button size="small" text @click="showToken = !showToken">
+                    {{ showToken ? t('mcp.hide') : t('mcp.show') }}
+                  </el-button>
+                  <el-button size="small" @click="copyToken">{{ t('mcp.copy') }}</el-button>
+                  <el-button size="small" type="danger" plain @click="regenerate">
+                    {{ t('mcp.regenerate') }}
+                  </el-button>
+                </div>
+              </div>
             </div>
-          </div>
 
-          <div class="settings-card">
-            <div class="setting-row">
-              <div>
-                <div class="setting-label">{{ t('system.language') }}</div>
-                <div class="setting-desc">{{ t('system.languageDesc') }}</div>
+            <div class="settings-card">
+              <div class="card-title-row">
+                <span class="card-title">{{ t('mcp.tools') }}</span>
+                <span class="tool-count">
+                  {{ t('mcp.enabledCount', { n: enabledToolCount, total: 7 }) }}
+                </span>
               </div>
-              <el-select
-                :model-value="settings.language"
-                style="width: 140px"
-                @change="(v) => changeLanguage(v as Lang)"
-              >
-                <el-option label="中文" value="zh-CN" />
-                <el-option label="English" value="en-US" />
-              </el-select>
+              <div class="setting-desc" style="margin-bottom: 6px">
+                {{ t('mcp.toolsDesc') }}
+              </div>
+              <div v-for="group in toolGroups" :key="group.nameKey">
+                <div class="tool-group-name">{{ t(group.nameKey) }}</div>
+                <div v-for="tool in group.tools" :key="tool.name" class="tool-row">
+                  <div class="tool-info">
+                    <span class="tool-name">{{ tool.name }}</span>
+                    <span class="tool-desc">{{ t(tool.descKey) }}</span>
+                  </div>
+                  <el-switch
+                    :model-value="isToolEnabled(tool.name)"
+                    @change="(v) => toggleTool(tool.name, v as boolean)"
+                  />
+                </div>
+              </div>
             </div>
-          </div>
-        </template>
+          </template>
+
+          <!-- 备份恢复 -->
+          <template v-if="activeSection === 'backup'">
+            <div class="settings-card">
+              <div class="card-title">{{ t('backup.export') }}</div>
+              <div class="setting-desc">{{ t('backup.exportDesc') }}</div>
+              <div style="margin-top: 12px">
+                <el-button type="primary" @click="exportSettings">
+                  {{ t('backup.exportBtn') }}
+                </el-button>
+              </div>
+            </div>
+            <div class="settings-card">
+              <div class="card-title">{{ t('backup.import') }}</div>
+              <div class="setting-desc">{{ t('backup.importDesc') }}</div>
+              <div style="margin-top: 12px">
+                <el-button @click="importSettings">{{ t('backup.importBtn') }}</el-button>
+              </div>
+            </div>
+          </template>
+
+          <!-- 系统配置 -->
+          <template v-if="activeSection === 'system' && settings">
+            <div class="settings-card">
+              <div class="card-title">{{ t('system.startup') }}</div>
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">{{ t('system.autoLaunch') }}</div>
+                  <div class="setting-desc">{{ t('system.autoLaunchDesc') }}</div>
+                </div>
+                <el-switch
+                  :model-value="settings.autoLaunch"
+                  @change="(v) => save({ autoLaunch: v as boolean })"
+                />
+              </div>
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">{{ t('system.blockSleep') }}</div>
+                  <div class="setting-desc">{{ t('system.blockSleepDesc') }}</div>
+                </div>
+                <el-switch
+                  :model-value="settings.blockSystemSleep"
+                  @change="(v) => save({ blockSystemSleep: v as boolean })"
+                />
+              </div>
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">{{ t('system.noHardwareAccel') }}</div>
+                  <div class="setting-desc">{{ t('system.noHardwareAccelDesc') }}</div>
+                </div>
+                <el-switch
+                  :model-value="settings.disableHardwareAcceleration"
+                  @change="(v) => save({ disableHardwareAcceleration: v as boolean })"
+                />
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="card-title">{{ t('system.window') }}</div>
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">{{ t('system.closeAction') }}</div>
+                  <div class="setting-desc">{{ t('system.closeActionDesc') }}</div>
+                </div>
+                <el-radio-group v-model="closeButtonAction" @change="save({ closeButtonAction })">
+                  <el-radio value="hide">{{ t('system.hideToDock') }}</el-radio>
+                  <el-radio value="quit">{{ t('system.quit') }}</el-radio>
+                </el-radio-group>
+              </div>
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">{{ t('system.confirmOnClose') }}</div>
+                  <div class="setting-desc">{{ t('system.confirmOnCloseDesc') }}</div>
+                </div>
+                <el-switch
+                  :model-value="settings.confirmOnClose"
+                  @change="(v) => save({ confirmOnClose: v as boolean })"
+                />
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">{{ t('system.language') }}</div>
+                  <div class="setting-desc">{{ t('system.languageDesc') }}</div>
+                </div>
+                <el-select
+                  :model-value="settings.language"
+                  style="width: 140px"
+                  @change="(v) => changeLanguage(v as Lang)"
+                >
+                  <el-option label="中文" value="zh-CN" />
+                  <el-option label="English" value="en-US" />
+                </el-select>
+              </div>
+            </div>
+          </template>
+        </div>
       </div>
     </div>
   </div>
@@ -681,7 +683,21 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   inset: 0;
   z-index: 300;
   display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  background: color-mix(in srgb, #000 42%, transparent);
+}
+.settings-window {
+  display: flex;
+  width: min(1120px, calc(100vw - 96px));
+  height: min(760px, calc(100vh - 96px));
+  min-height: 420px;
+  overflow: hidden;
+  border: 1px solid var(--tx-border);
+  border-radius: 12px;
   background: var(--tx-bg);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
 }
 .settings-sidebar {
   width: 220px;

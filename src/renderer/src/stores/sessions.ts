@@ -69,6 +69,13 @@ export const useSessionStore = defineStore('sessions', {
     },
     async openSession(connectionId: string, title?: string): Promise<void> {
       this.ensureStatusListener()
+      const existing = this.tabs.find((tab) => tab.connectionId === connectionId)
+      if (existing) {
+        this.activeSessionId = existing.sessionId
+        if (existing.status === 'disconnected') void this.reconnect(existing.sessionId)
+        this.recordUsage(connectionId)
+        return
+      }
       const { sessionId } = await window.api.openSession(connectionId)
       this.tabs.push({
         sessionId,
@@ -81,6 +88,10 @@ export const useSessionStore = defineStore('sessions', {
     },
     setActive(sessionId: string): void {
       this.activeSessionId = sessionId
+      const tab = this.tabs.find((t) => t.sessionId === sessionId)
+      if (tab && tab.status === 'disconnected') {
+        void this.reconnect(sessionId)
+      }
     },
     async closeSession(sessionId: string): Promise<void> {
       await window.api.closeSession(sessionId)

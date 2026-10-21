@@ -8,6 +8,7 @@ import { t } from '../i18n'
 const props = defineProps<{
   visible: boolean
   connectionId: string
+  cloneFromId?: string
 }>()
 
 const emit = defineEmits<{
@@ -37,6 +38,7 @@ const form = reactive({
 })
 
 const isEdit = (): boolean => props.connectionId !== ''
+const isClone = (): boolean => !isEdit() && Boolean(props.cloneFromId)
 
 watch(
   () => props.visible,
@@ -58,8 +60,9 @@ watch(
       color: '#10b981',
       timeoutMs: null
     })
-    if (isEdit()) {
-      const conn = store.connections.find((c) => c.id === props.connectionId)
+    const sourceId = props.connectionId || props.cloneFromId
+    if (sourceId) {
+      const conn = store.connections.find((c) => c.id === sourceId)
       if (conn) {
         form.name = conn.name
         form.groupId = conn.groupId
@@ -161,7 +164,7 @@ async function test(): Promise<void> {
 <template>
   <el-dialog
     :model-value="visible"
-    :title="isEdit() ? t('form.editTitle') : t('form.newTitle')"
+    :title="isEdit() || isClone() ? t('form.editTitle') : t('form.newTitle')"
     width="660px"
     @update:model-value="emit('update:visible', $event)"
   >
@@ -221,7 +224,7 @@ async function test(): Promise<void> {
                 v-model="form.password"
                 type="password"
                 show-password
-                :placeholder="isEdit() ? t('form.passwordEditHint') : ''"
+                :placeholder="isEdit() ? t('form.passwordEditHint') : t('form.passwordCloneHint')"
               />
             </el-form-item>
           </template>

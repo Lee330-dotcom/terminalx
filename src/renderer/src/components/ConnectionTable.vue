@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { DocumentCopy, Star, StarFilled } from '@element-plus/icons-vue'
+import { Clock, DocumentCopy, MoreFilled, Star, StarFilled } from '@element-plus/icons-vue'
 import { useAppStore } from '../stores/app'
 import { useSessionStore } from '../stores/sessions'
 import type { ConnectionFilter } from '../filter'
@@ -24,6 +24,8 @@ const sessionStore = useSessionStore()
 
 const selected = ref<string[]>([])
 const expanded = ref<string[]>([])
+const sortKey = ref<'latency' | 'name' | 'address' | null>(null)
+const sortAsc = ref(true)
 
 const groupName = (id: string | null): string =>
   id ? (store.groups.find((g) => g.id === id)?.name ?? '') : ''
@@ -53,8 +55,39 @@ const rows = computed<ConnectionWithStatus[]>(() => {
         groupName(c.groupId).toLowerCase().includes(q)
     )
   }
+  // 排序
+  if (sortKey.value) {
+    const key = sortKey.value
+    const asc = sortAsc.value
+    list = [...list].sort((a, b) => {
+      let va: number | string = 0
+      let vb: number | string = 0
+      if (key === 'latency') {
+        va = store.probes[a.id] ?? 9999
+        vb = store.probes[b.id] ?? 9999
+      } else if (key === 'name') {
+        va = a.name.toLowerCase()
+        vb = b.name.toLowerCase()
+      } else if (key === 'address') {
+        va = a.host.toLowerCase()
+        vb = b.host.toLowerCase()
+      }
+      if (va < vb) return asc ? -1 : 1
+      if (va > vb) return asc ? 1 : -1
+      return 0
+    })
+  }
   return list
 })
+
+function toggleSort(key: 'latency' | 'name' | 'address'): void {
+  if (sortKey.value === key) {
+    sortAsc.value = !sortAsc.value
+  } else {
+    sortKey.value = key
+    sortAsc.value = true
+  }
+}
 
 const allChecked = computed(
   () => rows.value.length > 0 && rows.value.every((r) => selected.value.includes(r.id))
@@ -150,13 +183,26 @@ watch(
         <span class="col-check">
           <el-checkbox :model-value="allChecked" @change="toggleAll" />
         </span>
-        <span class="col-star" />
-        <span class="col-os" />
-        <span class="col-latency">{{ t('table.latency') }}</span>
-        <span class="col-name">{{ t('table.name') }}</span>
-        <span class="col-addr">{{ t('table.address') }}</span>
+        <span class="col-drag" />
+        <span class="col-star" aria-hidden="true" />
+        <span class="col-os">{{ t('table.os') }}</span>
+        <span class="col-latency sortable" @click="toggleSort('latency')">
+          {{ t('table.latency') }}
+          <span v-if="sortKey === 'latency'" class="sort-indicator">{{ sortAsc ? '↑' : '↓' }}</span>
+        </span>
+        <span class="col-name sortable" @click="toggleSort('name')">
+          {{ t('table.name') }}
+          <span v-if="sortKey === 'name'" class="sort-indicator">{{ sortAsc ? '↑' : '↓' }}</span>
+        </span>
+        <span class="col-addr sortable" @click="toggleSort('address')">
+          {{ t('table.address') }}
+          <span v-if="sortKey === 'address'" class="sort-indicator">{{ sortAsc ? '↑' : '↓' }}</span>
+        </span>
         <span class="col-info">{{ t('table.info') }}</span>
-        <span class="col-actions">{{ t('table.actions') }}</span>
+        <span class="col-spacer" />
+        <span class="col-actions">
+          {{ t('table.actions') }}
+        </span>
       </div>
 
       <template v-for="c in rows" :key="c.id">
@@ -168,6 +214,7 @@ watch(
           <span class="col-check">
             <el-checkbox v-model="selected" :value="c.id" @click.stop />
           </span>
+          <span class="col-drag" />
           <span class="col-star" @click.stop="toggleFavorite(c.id)">
             <el-icon v-if="c.favorite" class="star filled"><StarFilled /></el-icon>
             <el-icon v-else class="star"><Star /></el-icon>
@@ -190,6 +237,7 @@ watch(
           </span>
           <span class="col-latency">
             <template v-if="store.probes[c.id] != null">
+              <el-icon class="latency-icon"><Clock /></el-icon>
               <span class="latency-ok">{{ store.probes[c.id] }} ms</span>
             </template>
             <span v-else-if="store.probes[c.id] === null" class="latency-bad">{{
@@ -212,15 +260,19 @@ watch(
               @change="toggleExpanded(c.id)"
             />
           </span>
+          <span class="col-spacer" />
           <span class="col-actions">
-            <el-button size="small" type="primary" @click.stop="emit('connect', c.id)">
+            <el-button size="small" type="success" @click.stop="emit('connect', c.id)">
               {{ t('common.connect') }}
             </el-button>
             <el-button size="small" text @click.stop="emit('edit', c.id)">{{
               t('common.edit')
             }}</el-button>
             <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(c, cmd)">
-              <span class="more-btn" @click.stop>{{ t('table.more') }}</span>
+              <span class="more-btn" @click.stop>
+                {{ t('table.more') }}
+                <el-icon><MoreFilled /></el-icon>
+              </span>
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item command="clone">{{ t('common.copy') }}</el-dropdown-item>
@@ -279,7 +331,7 @@ watch(
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 12px;
+  padding: 12px 22px 20px;
 }
 .batch-bar {
   display: flex;
@@ -300,18 +352,20 @@ watch(
   overflow: auto;
   background: var(--tx-panel);
   border: 1px solid var(--tx-border);
-  border-radius: 10px;
+  border-radius: 8px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.06);
 }
 .row {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 12px;
+  min-height: 46px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--tx-border);
   font-size: 13px;
 }
 .row:hover {
-  background: var(--tx-hover);
+  background: color-mix(in srgb, var(--tx-green) 5%, var(--tx-hover));
 }
 .row.expanded {
   background: var(--tx-fill);
@@ -319,7 +373,8 @@ watch(
 .row.head {
   position: sticky;
   top: 0;
-  background: var(--tx-panel);
+  min-height: 39px;
+  background: color-mix(in srgb, var(--tx-panel) 90%, var(--tx-fill));
   color: var(--tx-text-3);
   font-size: 12px;
   z-index: 1;
@@ -330,6 +385,11 @@ watch(
 .col-check {
   width: 22px;
   flex-shrink: 0;
+}
+.col-drag {
+  width: 16px;
+  flex-shrink: 0;
+  cursor: grab;
 }
 .col-star {
   width: 20px;
@@ -346,18 +406,39 @@ watch(
   color: #f5c518;
 }
 .col-os {
-  width: 20px;
+  width: 24px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  justify-content: center;
 }
 .os-icon {
   display: block;
 }
 .col-latency {
-  width: 60px;
+  width: 90px;
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.col-latency.sortable {
+  cursor: pointer;
+}
+.col-latency.sortable:hover {
+  color: var(--tx-text);
+}
+.sort-icon {
+  font-size: 12px;
+}
+.sort-indicator {
+  font-size: 10px;
+  margin-left: 2px;
+}
+.latency-icon {
+  font-size: 12px;
+  color: var(--tx-green-hover);
 }
 .latency-ok {
   color: var(--tx-green-hover);
@@ -375,10 +456,16 @@ watch(
   align-items: center;
   gap: 8px;
 }
+.col-name.sortable {
+  cursor: pointer;
+}
+.col-name.sortable:hover {
+  color: var(--tx-text);
+}
 .color-tag {
-  width: 4px;
-  height: 14px;
-  border-radius: 2px;
+  width: 6px;
+  height: 18px;
+  border-radius: 3px;
   flex-shrink: 0;
 }
 .conn-name {
@@ -395,6 +482,12 @@ watch(
   color: var(--tx-text-2);
   font-variant-numeric: tabular-nums;
 }
+.col-addr.sortable {
+  cursor: pointer;
+}
+.col-addr.sortable:hover {
+  color: var(--tx-text);
+}
 .addr-text {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -410,29 +503,58 @@ watch(
   color: var(--tx-green-hover);
 }
 .col-info {
-  width: 46px;
-  flex-shrink: 0;
-  display: flex;
-  justify-content: center;
-}
-.col-actions {
-  width: 196px;
+  width: 70px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 6px;
+}
+.info-switch {
+  transform: scale(0.85);
+}
+.col-spacer {
+  flex: 1;
+}
+.col-actions {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.col-actions .el-button--success {
+  background: var(--tx-green);
+  border-color: var(--tx-green);
+  color: #062c20;
+  font-weight: 600;
+}
+.col-actions .el-button--success:hover {
+  background: var(--tx-green-hover);
+  border-color: var(--tx-green-hover);
 }
 .more-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   color: var(--tx-text-2);
   font-size: 12px;
   cursor: pointer;
-  padding: 4px 6px;
+  padding: 4px 8px;
   border-radius: 4px;
   white-space: nowrap;
 }
 .more-btn:hover {
   color: var(--tx-green-hover);
   background: var(--tx-hover);
+}
+.action-settings {
+  font-size: 14px;
+  color: var(--tx-text-3);
+  cursor: pointer;
+  margin-left: 8px;
+}
+.action-settings:hover {
+  color: var(--tx-green-hover);
 }
 .row.detail {
   background: var(--tx-fill);
@@ -455,5 +577,21 @@ watch(
   justify-content: center;
   gap: 14px;
   color: var(--tx-text-3);
+}
+
+@media (max-width: 900px) {
+  .conn-table-wrap {
+    padding: 10px 12px;
+  }
+  .col-info,
+  .col-spacer {
+    display: none;
+  }
+  .col-actions {
+    width: 160px;
+  }
+  .col-latency {
+    width: 72px;
+  }
 }
 </style>

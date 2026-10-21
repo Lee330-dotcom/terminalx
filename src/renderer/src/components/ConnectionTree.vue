@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Collection, Clock, Folder, Star, TrendCharts } from '@element-plus/icons-vue'
+import { ArrowRight, Folder, Setting } from '@element-plus/icons-vue'
 import { useAppStore } from '../stores/app'
 import { useSessionStore } from '../stores/sessions'
 import { t } from '../i18n'
@@ -22,6 +22,17 @@ const sessionStore = useSessionStore()
 const favoriteCount = computed(() => store.connections.filter((c) => c.favorite).length)
 const recentIds = computed(() => sessionStore.recentIds.slice(0, 7))
 const frequentIds = computed(() => sessionStore.frequentIds.slice(0, 7))
+
+// 树节点展开状态
+const expandedGroups = reactive<Record<string, boolean>>({
+  favorite: false,
+  recent: false,
+  frequent: false
+})
+
+function toggleGroup(key: string): void {
+  expandedGroups[key] = !expandedGroups[key]
+}
 
 function isActive(f: ConnectionFilter): boolean {
   return (
@@ -88,72 +99,105 @@ onMounted(() => store.refresh())
 
 <template>
   <div class="side-nav">
-    <div class="nav-section all-section">
-      <div
-        class="nav-item"
-        :class="{ active: isActive({ kind: 'all' }) }"
-        @click="emit('changeFilter', { kind: 'all' })"
-      >
-        <span class="nav-label">{{ t('tree.all') }}</span>
-        <span class="nav-count">{{ store.connections.length }}</span>
+    <!-- 全部 -->
+    <div
+      class="tree-item"
+      :class="{ active: isActive({ kind: 'all' }) }"
+      @click="emit('changeFilter', { kind: 'all' })"
+    >
+      <span class="tree-label">{{ t('tree.all') }}</span>
+      <span class="tree-count">{{ store.connections.length }}</span>
+      <el-icon class="tree-settings" @click.stop="emit('openSettings')"><Setting /></el-icon>
+    </div>
+
+    <!-- 收藏 -->
+    <div class="tree-group">
+      <div class="tree-item group-header" @click="toggleGroup('favorite')">
+        <el-icon class="tree-arrow" :class="{ expanded: expandedGroups.favorite }">
+          <ArrowRight />
+        </el-icon>
+        <el-icon class="tree-icon"><Folder /></el-icon>
+        <span class="tree-label">{{ t('tree.favorite') }}</span>
+        <span class="tree-count">{{ favoriteCount }}</span>
       </div>
-      <div class="nav-children">
+      <div v-show="expandedGroups.favorite" class="tree-children">
         <div
-          class="nav-item"
-          :class="{ active: isActive({ kind: 'favorite' }) }"
+          v-for="c in store.connections.filter((x) => x.favorite)"
+          :key="c.id"
+          class="tree-item child-item"
           @click="emit('changeFilter', { kind: 'favorite' })"
         >
-          <el-icon class="nav-icon star"><Star /></el-icon>
-          <span class="nav-label">{{ t('tree.favorite') }}</span>
-          <span class="nav-count">{{ favoriteCount }}</span>
+          <span class="tree-label">{{ c.name }}</span>
         </div>
+      </div>
+    </div>
+
+    <!-- 最近 -->
+    <div class="tree-group">
+      <div class="tree-item group-header" @click="toggleGroup('recent')">
+        <el-icon class="tree-arrow" :class="{ expanded: expandedGroups.recent }">
+          <ArrowRight />
+        </el-icon>
+        <el-icon class="tree-icon"><Folder /></el-icon>
+        <span class="tree-label">{{ t('tree.recent') }}</span>
+        <span class="tree-count">{{ recentIds.length }}</span>
+      </div>
+      <div v-show="expandedGroups.recent" class="tree-children">
         <div
-          class="nav-item"
-          :class="{ active: isActive({ kind: 'recent' }) }"
+          v-for="id in recentIds"
+          :key="id"
+          class="tree-item child-item"
           @click="emit('changeFilter', { kind: 'recent' })"
         >
-          <el-icon class="nav-icon"><Clock /></el-icon>
-          <span class="nav-label">{{ t('tree.recent') }}</span>
-          <span class="nav-count">{{ recentIds.length }}</span>
+          <span class="tree-label">{{
+            store.connections.find((c) => c.id === id)?.name ?? id
+          }}</span>
         </div>
+      </div>
+    </div>
+
+    <!-- 常用 -->
+    <div class="tree-group">
+      <div class="tree-item group-header" @click="toggleGroup('frequent')">
+        <el-icon class="tree-arrow" :class="{ expanded: expandedGroups.frequent }">
+          <ArrowRight />
+        </el-icon>
+        <el-icon class="tree-icon"><Folder /></el-icon>
+        <span class="tree-label">{{ t('tree.frequent') }}</span>
+        <span class="tree-count">{{ frequentIds.length }}</span>
+      </div>
+      <div v-show="expandedGroups.frequent" class="tree-children">
         <div
-          class="nav-item"
-          :class="{ active: isActive({ kind: 'frequent' }) }"
+          v-for="id in frequentIds"
+          :key="id"
+          class="tree-item child-item"
           @click="emit('changeFilter', { kind: 'frequent' })"
         >
-          <el-icon class="nav-icon"><TrendCharts /></el-icon>
-          <span class="nav-label">{{ t('tree.frequent') }}</span>
-          <span class="nav-count">{{ frequentIds.length }}</span>
+          <span class="tree-label">{{
+            store.connections.find((c) => c.id === id)?.name ?? id
+          }}</span>
         </div>
       </div>
     </div>
 
-    <div class="nav-section">
-      <div class="nav-caption">
-        <el-icon class="nav-icon"><Collection /></el-icon>
-        <span>{{ t('tree.groups') }}</span>
-      </div>
-      <div
-        v-for="g in store.groups"
-        :key="g.id"
-        class="nav-item"
-        :class="{ active: isActive({ kind: 'group', groupId: g.id }) }"
-        @click="emit('changeFilter', { kind: 'group', groupId: g.id })"
-        @contextmenu.prevent="onGroupContextMenu($event, g.id, g.name)"
-      >
-        <el-icon class="nav-icon"><Folder /></el-icon>
-        <span class="nav-label">{{ g.name }}</span>
-        <span class="nav-count">{{
-          store.connections.filter((c) => c.groupId === g.id).length
-        }}</span>
-      </div>
-      <div v-if="store.groups.length === 0" class="nav-hint">{{ t('tree.noGroups') }}</div>
+    <!-- 自定义分组 -->
+    <div v-if="store.groups.length > 0" class="tree-divider" />
+    <div
+      v-for="g in store.groups"
+      :key="g.id"
+      class="tree-item"
+      :class="{ active: isActive({ kind: 'group', groupId: g.id }) }"
+      @click="emit('changeFilter', { kind: 'group', groupId: g.id })"
+      @contextmenu.prevent="onGroupContextMenu($event, g.id, g.name)"
+    >
+      <el-icon class="tree-icon"><Folder /></el-icon>
+      <span class="tree-label">{{ g.name }}</span>
+      <span class="tree-count">{{
+        store.connections.filter((c) => c.groupId === g.id).length
+      }}</span>
     </div>
 
-    <div class="nav-footer">
-      <span class="footer-btn" @click="emit('openSettings')">{{ t('tree.settings') }}</span>
-    </div>
-
+    <!-- 右键菜单 -->
     <div
       v-if="menu.visible"
       class="context-menu"
@@ -172,100 +216,103 @@ onMounted(() => store.refresh())
   flex-direction: column;
   height: 100%;
   background: var(--tx-panel);
-  overflow: hidden;
-}
-.nav-section {
-  padding: 8px;
-  border-bottom: 1px solid var(--tx-border);
   overflow-y: auto;
+  padding: 8px;
 }
-.all-section {
-  flex-shrink: 0;
-  overflow: visible;
-}
-.nav-section:not(.all-section) {
-  flex: 1;
-  min-height: 0;
-}
-.nav-caption {
+
+.tree-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px 6px;
-  font-size: 12px;
-  color: var(--tx-text-3);
-}
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: 7px;
+  min-height: 32px;
+  padding: 6px 9px;
   border-radius: 6px;
   font-size: 13px;
   color: var(--tx-text-2);
   cursor: pointer;
   white-space: nowrap;
+  user-select: none;
 }
-.nav-item:hover {
+.tree-item:hover {
   background: var(--tx-hover);
   color: var(--tx-text);
 }
-.nav-item.active {
-  background: color-mix(in srgb, var(--tx-green) 14%, transparent);
+.tree-item.active {
+  background: color-mix(in srgb, var(--tx-green) 16%, transparent);
   color: var(--tx-green-hover);
+  box-shadow: inset 2px 0 0 var(--tx-green);
 }
-.nav-children {
-  padding-left: 12px;
+
+.group-header {
+  margin-top: 3px;
+  color: var(--tx-text);
+  font-weight: 550;
 }
-.nav-icon {
+
+.tree-arrow {
+  font-size: 12px;
+  transition: transform 0.2s;
+  color: var(--tx-text-3);
+}
+.tree-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+.tree-icon {
   font-size: 14px;
   color: var(--tx-text-3);
   flex-shrink: 0;
 }
-.nav-item.active .nav-icon {
+.tree-item.active .tree-icon {
   color: var(--tx-green-hover);
 }
-.nav-icon.star {
-  color: #f5c518;
-}
-.nav-label {
+
+.tree-label {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.nav-count {
+
+.tree-count {
   font-size: 11px;
   color: var(--tx-text-3);
   background: var(--tx-fill);
-  padding: 0 7px;
+  padding: 0 6px;
   border-radius: 8px;
+  min-width: 18px;
+  text-align: center;
 }
-.nav-item.active .nav-count {
+.tree-item.active .tree-count {
   background: color-mix(in srgb, var(--tx-green) 22%, transparent);
   color: var(--tx-green-hover);
 }
-.nav-hint {
-  padding: 6px 10px;
-  font-size: 12px;
-  color: var(--tx-text-3);
-}
-.nav-footer {
-  flex-shrink: 0;
-  padding: 8px;
-  border-top: 1px solid var(--tx-border);
-}
-.footer-btn {
-  display: block;
-  padding: 6px 10px;
-  border-radius: 6px;
+
+.tree-settings {
   font-size: 13px;
-  color: var(--tx-text-2);
+  color: var(--tx-text-3);
   cursor: pointer;
 }
-.footer-btn:hover {
-  background: var(--tx-hover);
-  color: var(--tx-text);
+.tree-settings:hover {
+  color: var(--tx-green-hover);
 }
+
+.tree-children {
+  margin-left: 7px;
+  padding-left: 13px;
+  border-left: 1px solid var(--tx-border);
+}
+.child-item {
+  min-height: 29px;
+  padding: 5px 9px;
+  font-size: 12px;
+}
+
+.tree-divider {
+  height: 1px;
+  background: var(--tx-border);
+  margin: 8px 12px;
+}
+
 .context-menu {
   position: fixed;
   z-index: 3000;

@@ -46,6 +46,7 @@ const zhCN: Record<string, string> = {
   // 连接表格
   'table.selected': '已选 {n} 项',
   'table.latency': '延迟',
+  'table.os': '系统',
   'table.name': '名称',
   'table.address': '地址',
   'table.info': '信息',
@@ -92,6 +93,7 @@ const zhCN: Record<string, string> = {
   'form.authHintKey': '使用私钥文件或私钥内容完成认证。',
   'form.password': '密码',
   'form.passwordEditHint': '留空表示不修改',
+  'form.passwordCloneHint': '请输入新连接密码',
   'form.privateKey': '私钥',
   'form.keySource': '私钥来源',
   'form.keyFile': '私钥文件',
@@ -134,6 +136,8 @@ const zhCN: Record<string, string> = {
   'sftp.deleteConfirm': '确定删除 {name}{suffix}？此操作不可恢复。',
   'sftp.deleteDirSuffix': ' 目录',
   'sftp.dropHint': '松开鼠标上传到当前目录',
+  'sftp.copyPath': '复制路径',
+  'sftp.pathCopied': '路径已复制到剪贴板',
 
   // 设置面板
   'settings.title': '设置',
@@ -296,6 +300,7 @@ const enUS: Record<string, string> = {
 
   'table.selected': '{n} selected',
   'table.latency': 'Latency',
+  'table.os': 'OS',
   'table.name': 'Name',
   'table.address': 'Address',
   'table.info': 'Info',
@@ -342,6 +347,7 @@ const enUS: Record<string, string> = {
   'form.authHintKey': 'Authenticate with a private key file or pasted key content.',
   'form.password': 'Password',
   'form.passwordEditHint': 'Leave empty to keep current',
+  'form.passwordCloneHint': 'Enter the password for the new connection',
   'form.privateKey': 'Private key',
   'form.keySource': 'Key source',
   'form.keyFile': 'Key file',
@@ -383,6 +389,8 @@ const enUS: Record<string, string> = {
   'sftp.deleteConfirm': 'Delete {name}{suffix}? This cannot be undone.',
   'sftp.deleteDirSuffix': ' directory',
   'sftp.dropHint': 'Release to upload to current directory',
+  'sftp.copyPath': 'Copy Path',
+  'sftp.pathCopied': 'Path copied to clipboard',
 
   'settings.title': 'Settings',
   'settings.searchPlaceholder': 'Search settings',
