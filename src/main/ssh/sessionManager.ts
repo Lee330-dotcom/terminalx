@@ -3,11 +3,6 @@ import { StringDecoder } from 'string_decoder'
 import { ClientChannel } from 'ssh2'
 import { SessionInfo, SessionStatus } from '@shared/types'
 import { ClientHandle, ConnectionManager, describeSshError, openShell } from './connectionManager'
-import {
-  buildSetupPayload,
-  createSetupEchoSuppressor,
-  looksLikeShellPrompt
-} from './echoSuppressor'
 
 const MAX_SCROLLBACK_LINES = 10_000
 const FLUSH_INTERVAL_MS = 16
@@ -105,26 +100,10 @@ export class SessionManager {
       }
       session.handle = handle
       session.stream = stream
-      // 染色初始化：等远端出现 shell 提示符再写入（堡垒机握手/菜单阶段
-      // 写入会被吞掉甚至拆会话）；回显由抑制器在数据路径上剥掉
-      const suppressor = createSetupEchoSuppressor()
-      const setupPayload = buildSetupPayload()
-      let setupSent = false
-      let tailText = ''
       this.setStatus(session, 'connected')
       stream.on('data', (d: Buffer) => {
-        if (!setupSent) {
-          tailText = (tailText + d.toString('utf8')).slice(-200)
-          if (looksLikeShellPrompt(tailText)) {
-            setupSent = true
-            stream.write(setupPayload)
-          }
-        }
-        const out = suppressor.push(d)
-        if (out && out.length > 0) {
-          session.pending.push(out)
-          this.scheduleFlush(session)
-        }
+        session.pending.push(d)
+        this.scheduleFlush(session)
       })
       stream.on('close', () => {
         this.flush(session)
