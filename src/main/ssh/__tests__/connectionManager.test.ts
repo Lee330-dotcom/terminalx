@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { ConnectConfig } from 'ssh2'
 import { ConnectionManager, describeSshError } from '../connectionManager'
-import { SessionManager } from '../sessionManager'
+import { ConnectionNameLookup, SessionManager } from '../sessionManager'
 import { startTestSshServer, TestSshServer } from './testSshServer'
 
 let server: TestSshServer
@@ -95,6 +95,43 @@ describe('ConnectionManager 集成', () => {
     handle.release()
     await new Promise((r) => setTimeout(r, 400))
     expect(manager.isOnline('conn-1')).toBe(false)
+  })
+})
+
+describe('SessionManager 自动切换目录', () => {
+  const HELINK_DIR = '/data/apps/helink-pro/logs/app/helink-pro/'
+
+  function collect(lookup?: ConnectionNameLookup): {
+    dataText: () => string
+    manager: SessionManager
+  } {
+    const events: CapturedEvent[] = []
+    const sink = {
+      emitData: (sessionId: string, data: Uint8Array) =>
+        events.push({ type: 'data', sessionId, data: Buffer.from(data).toString('utf8') }),
+      emitStatus: () => {}
+    }
+    const manager = new SessionManager(makeManager('test-pass'), sink as never, lookup)
+    return {
+      dataText: () => events.map((e) => e.data ?? '').join(''),
+      manager
+    }
+  }
+
+  it('连接名包含 helink 时自动 cd 到日志目录', async () => {
+    const { dataText, manager } = collect(async () => ({ name: 'helink-pro 生产' }))
+    const { sessionId } = await manager.open('conn-1')
+    await new Promise((r) => setTimeout(r, 900))
+    expect(dataText()).toContain(`cd ${HELINK_DIR}`)
+    await manager.close(sessionId)
+  })
+
+  it('连接名不含 helink 时不写入任何命令', async () => {
+    const { dataText, manager } = collect(async () => ({ name: 'other-server' }))
+    const { sessionId } = await manager.open('conn-1')
+    await new Promise((r) => setTimeout(r, 900))
+    expect(dataText()).not.toContain('cd ')
+    await manager.close(sessionId)
   })
 })
 

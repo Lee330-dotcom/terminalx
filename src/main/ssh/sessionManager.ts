@@ -7,6 +7,23 @@ import { ClientHandle, ConnectionManager, describeSshError, openShell } from './
 const MAX_SCROLLBACK_LINES = 10_000
 const FLUSH_INTERVAL_MS = 16
 
+/** shell 输出静默多久视为提示符就绪，此时再写入自动 cd 命令 */
+const AUTO_CD_IDLE_MS = 400
+/** 兜底：即使一直没输出，也在此延迟后写入 */
+const AUTO_CD_FALLBACK_MS = 4_000
+
+interface AutoCdRule {
+  /** 连接名包含该关键字（不区分大小写）时生效 */
+  nameIncludes: string
+  directory: string
+}
+
+const AUTO_CD_RULES: AutoCdRule[] = [
+  { nameIncludes: 'helink', directory: '/data/apps/helink-pro/logs/app/helink-pro/' }
+]
+
+export type ConnectionNameLookup = (connectionId: string) => Promise<{ name: string } | null>
+
 export interface SessionEventSink {
   emitData(sessionId: string, data: Uint8Array): void
   emitStatus(sessionId: string, status: SessionStatus, errorMessage?: string): void
@@ -25,6 +42,8 @@ interface TerminalSession {
   pending: Buffer[]
   flushTimer?: NodeJS.Timeout
   closedByUser: boolean
+  /** 尚未发送的自动 cd（等待提示符就绪） */
+  autoCd?: { directory: string; idleTimer?: NodeJS.Timeout; fallbackTimer?: NodeJS.Timeout }
 }
 
 export class SessionManager {
@@ -32,7 +51,8 @@ export class SessionManager {
 
   constructor(
     private readonly connections: ConnectionManager,
-    private readonly sink: SessionEventSink
+    private readonly sink: SessionEventSink,
+    private readonly lookupConnection?: ConnectionNameLookup
   ) {}
 
   private flush(session: TerminalSession): void {
@@ -101,12 +121,15 @@ export class SessionManager {
       session.handle = handle
       session.stream = stream
       this.setStatus(session, 'connected')
+      void this.armAutoCd(session, stream)
       stream.on('data', (d: Buffer) => {
         session.pending.push(d)
         this.scheduleFlush(session)
+        this.touchAutoCd(session)
       })
       stream.on('close', () => {
         this.flush(session)
+        this.clearAutoCd(session)
         handle?.release()
         // 迟到的旧通道 close（重连后旧 stream 才关闭）：
         // session.stream 已被新通道替换，此时不得清理新通道、也不得改状态
@@ -131,6 +154,51 @@ export class SessionManager {
     }
   }
 
+  /**
+   * 连接名命中 AUTO_CD_RULES 时，等 shell 输出静默（提示符就绪）后写入 cd 命令。
+   * 等待静默是为了避开横幅与堡垒机握手期，避免命令被吞掉或与输出交叉。
+   */
+  private async armAutoCd(session: TerminalSession, stream: ClientChannel): Promise<void> {
+    if (!this.lookupConnection) return
+    let name: string
+    try {
+      const meta = await this.lookupConnection(session.connectionId)
+      if (!meta) return
+      name = meta.name.toLowerCase()
+    } catch {
+      return
+    }
+    const rule = AUTO_CD_RULES.find((r) => name.includes(r.nameIncludes))
+    // 查询期间会话可能已关闭，或通道已被重连替换
+    if (!rule || !this.sessions.has(session.id) || session.stream !== stream) return
+    session.autoCd = { directory: rule.directory }
+    session.autoCd.idleTimer = setTimeout(() => this.runAutoCd(session), AUTO_CD_IDLE_MS)
+    session.autoCd.fallbackTimer = setTimeout(() => this.runAutoCd(session), AUTO_CD_FALLBACK_MS)
+  }
+
+  private touchAutoCd(session: TerminalSession): void {
+    const autoCd = session.autoCd
+    if (!autoCd) return
+    clearTimeout(autoCd.idleTimer)
+    autoCd.idleTimer = setTimeout(() => this.runAutoCd(session), AUTO_CD_IDLE_MS)
+  }
+
+  private runAutoCd(session: TerminalSession): void {
+    const autoCd = session.autoCd
+    if (!autoCd) return
+    this.clearAutoCd(session)
+    if (!this.sessions.has(session.id) || !session.stream) return
+    session.stream.write(`cd ${autoCd.directory}\r`)
+  }
+
+  private clearAutoCd(session: TerminalSession): void {
+    const autoCd = session.autoCd
+    if (!autoCd) return
+    session.autoCd = undefined
+    clearTimeout(autoCd.idleTimer)
+    clearTimeout(autoCd.fallbackTimer)
+  }
+
   input(sessionId: string, data: Uint8Array): void {
     const session = this.sessions.get(sessionId)
     if (session?.stream) session.stream.write(Buffer.from(data))
@@ -146,6 +214,7 @@ export class SessionManager {
     if (!session) return
     session.closedByUser = true
     this.flush(session)
+    this.clearAutoCd(session)
     session.stream?.end()
     session.stream = null
     // 用户明确关闭会话时立即销毁底层 client，避免旧 shell 通道
@@ -158,6 +227,7 @@ export class SessionManager {
   async reconnect(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId)
     if (!session) throw new Error(`session not found: ${sessionId}`)
+    this.clearAutoCd(session)
     if (session.stream) {
       session.closedByUser = true
       session.stream.end()
