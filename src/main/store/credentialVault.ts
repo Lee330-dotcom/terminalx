@@ -21,6 +21,8 @@ export interface SecretPayload {
   privateKeyContent?: string
   privateKeyFile?: string
   passphrase?: string
+  /** AI 服务密钥（按固定 id 存放） */
+  apiKey?: string
 }
 
 /**

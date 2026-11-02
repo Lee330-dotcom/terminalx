@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Connection,
   Folder,
   FolderAdd,
   FolderOpened,
+  MagicStick,
   Monitor,
   Plus,
   Refresh,
@@ -19,7 +20,10 @@ import SettingsPanel from './components/SettingsPanel.vue'
 import TerminalView from './components/TerminalView.vue'
 import SftpPanel from './components/SftpPanel.vue'
 import CommandPalette from './components/CommandPalette.vue'
-import { useSessionStore } from './stores/sessions'
+import AiPanel from './components/AiPanel.vue'
+import { useSessionStore, SessionTab } from './stores/sessions'
+import { useAiStore } from './stores/ai'
+import { useAiChatStore } from './stores/aiChat'
 import { useAppStore } from './stores/app'
 import { useSettingsStore } from './stores/settings'
 import { t, currentLang } from './i18n'
@@ -30,6 +34,8 @@ import type { ConnectionFilter } from './filter'
 const sessionStore = useSessionStore()
 const appStore = useAppStore()
 const settingsStore = useSettingsStore()
+const aiStore = useAiStore()
+const aiChatStore = useAiChatStore()
 
 const formVisible = ref(false)
 const editingId = ref('')
@@ -44,6 +50,10 @@ const sidebarCollapsed = ref(false)
 const cmdPaletteVisible = ref(false)
 const sftpWidth = ref(320)
 let resizingSftp = false
+const aiWidth = ref(380)
+let resizingAi = false
+let aiResizeStartX = 0
+let aiResizeStartWidth = 0
 
 function startSftpResize(event: MouseEvent): void {
   event.preventDefault()
@@ -62,6 +72,30 @@ function stopSftpResize(): void {
   document.body.style.cursor = ''
   window.removeEventListener('mousemove', resizeSftp)
   window.removeEventListener('mouseup', stopSftpResize)
+}
+
+function startAiResize(event: MouseEvent): void {
+  event.preventDefault()
+  resizingAi = true
+  aiResizeStartX = event.clientX
+  aiResizeStartWidth = aiWidth.value
+  document.body.style.cursor = 'col-resize'
+  window.addEventListener('mousemove', resizeAi)
+  window.addEventListener('mouseup', stopAiResize)
+}
+
+function resizeAi(event: MouseEvent): void {
+  if (!resizingAi) return
+  const max = Math.max(320, Math.min(760, window.innerWidth - 400))
+  const next = aiResizeStartWidth + aiResizeStartX - event.clientX
+  aiWidth.value = Math.min(max, Math.max(320, next))
+}
+
+function stopAiResize(): void {
+  resizingAi = false
+  document.body.style.cursor = ''
+  window.removeEventListener('mousemove', resizeAi)
+  window.removeEventListener('mouseup', stopAiResize)
 }
 
 function openEdit(id: string): void {
@@ -135,9 +169,66 @@ function sendCommand(command: string): void {
   }
 }
 
+function explainSelection(tab: SessionTab, text: string): void {
+  void aiStore.run({
+    kind: 'selection-explanation',
+    title: tab.title,
+    scope: `选中 ${text.trim().length} 字符`,
+    sessionId: tab.sessionId,
+    connectionId: tab.connectionId,
+    selection: text
+  })
+}
+
+function summarizeSession(tab: SessionTab): void {
+  void aiStore.run({
+    kind: 'session-summary',
+    title: tab.title,
+    scope: '最近 300 行',
+    sessionId: tab.sessionId,
+    connectionId: tab.connectionId
+  })
+}
+
+function toggleAiPanel(): void {
+  aiStore.visible = !aiStore.visible
+  if (!aiStore.visible) return
+  void aiStore.refreshStatus()
+  void aiChatStore.refreshStatus()
+  if (activeTab.value?.status !== 'connected') aiStore.panelTab = 'analysis'
+}
+
+watch(
+  () => ({ id: sessionStore.activeSessionId, status: sessionStore.activeTab?.status ?? null }),
+  (next, prev) => {
+    const prevId = prev?.id ?? null
+    if (prevId !== next.id) {
+      aiChatStore.handleActiveSessionChange(prevId, next.id)
+      return
+    }
+    if (next.id && prev?.status === 'connected' && next.status !== 'connected') {
+      aiChatStore.handleDisconnect(next.id)
+    }
+  },
+  { immediate: true }
+)
+
+function diagnoseConnection(tab: SessionTab): void {
+  void aiStore.run({
+    kind: 'connection-diagnosis',
+    title: tab.title,
+    scope: '连接诊断',
+    sessionId: tab.sessionId,
+    connectionId: tab.connectionId,
+    errorMessage: tab.errorMessage ?? ''
+  })
+}
+
 onMounted(() => {
   void appStore.refresh()
   void settingsStore.load()
+  void aiStore.refreshStatus()
+  aiChatStore.ensureListeners()
   document.addEventListener('keydown', onGlobalKeydown)
 })
 
@@ -200,6 +291,12 @@ onUnmounted(() => {
             <el-icon><Plus /></el-icon>
             新建连接
           </el-button>
+          <el-tooltip content="AI 助手（分析 + 受控执行）" placement="bottom">
+            <el-button class="gear-btn ai-entry-btn" text size="small" @click="toggleAiPanel">
+              <el-icon :size="15"><MagicStick /></el-icon>
+              <span class="ai-entry-label">AI</span>
+            </el-button>
+          </el-tooltip>
           <el-button class="gear-btn" text circle @click="settingsVisible = true">
             <el-icon :size="16"><Setting /></el-icon>
           </el-button>
@@ -317,13 +414,23 @@ onUnmounted(() => {
                   >×</span
                 >
               </div>
-              <span
-                v-if="!sftpVisible && activeConnectionId"
-                class="sub-tab sftp-show-btn"
-                @click="sftpVisible = true"
-              >
-                + 文件
-              </span>
+              <div class="tab-actions">
+                <span
+                  v-if="activeTab?.status === 'connected'"
+                  class="sub-tab ai-summary-btn"
+                  @click="activeTab && summarizeSession(activeTab)"
+                >
+                  ✦ AI 摘要
+                </span>
+                <span
+                  v-if="!sftpVisible && activeConnectionId"
+                  class="sub-tab sftp-show-btn"
+                  @click="sftpVisible = true"
+                >
+                  <el-icon><Folder /></el-icon>
+                  文件
+                </span>
+              </div>
             </div>
             <div class="tab-body">
               <div class="panel-main">
@@ -331,9 +438,12 @@ onUnmounted(() => {
                   <div v-show="tab.sessionId === sessionStore.activeSessionId" class="tab-panel">
                     <div v-if="tab.status === 'error'" class="state-panel error">
                       <p>{{ t('app.connectFailed', { err: tab.errorMessage }) }}</p>
-                      <el-button type="primary" @click="sessionStore.reconnect(tab.sessionId)">
-                        {{ t('app.reconnect') }}
-                      </el-button>
+                      <div class="state-panel-actions">
+                        <el-button type="primary" @click="sessionStore.reconnect(tab.sessionId)">
+                          {{ t('app.reconnect') }}
+                        </el-button>
+                        <el-button @click="diagnoseConnection(tab)">✦ AI 诊断</el-button>
+                      </div>
                     </div>
                     <div v-else-if="tab.status === 'disconnected'" class="state-panel">
                       <p>{{ t('app.disconnected') }}</p>
@@ -341,13 +451,25 @@ onUnmounted(() => {
                         {{ t('app.reconnect') }}
                       </el-button>
                     </div>
-                    <TerminalView v-else :session-id="tab.sessionId" />
+                    <TerminalView
+                      v-else
+                      :session-id="tab.sessionId"
+                      @explain="(text: string) => explainSelection(tab, text)"
+                    />
                   </div>
                 </template>
               </div>
             </div>
           </div>
         </main>
+
+        <div v-if="aiStore.visible" class="ai-resizer" @mousedown="startAiResize" />
+        <AiPanel
+          v-if="aiStore.visible"
+          :width="aiWidth"
+          @close="aiStore.hide()"
+          @open-settings="settingsVisible = true"
+        />
       </div>
 
       <ConnectionFormDialog
@@ -519,6 +641,15 @@ onUnmounted(() => {
 .gear-btn:hover {
   color: var(--tx-green-hover);
 }
+.ai-entry-btn {
+  gap: 4px;
+}
+.ai-entry-label {
+  color: var(--tx-green);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
 
 /* 主体布局 */
 .app-body {
@@ -670,6 +801,18 @@ onUnmounted(() => {
 .sftp-resizer:active {
   background: color-mix(in srgb, var(--tx-green) 55%, transparent);
 }
+.ai-resizer {
+  width: 6px;
+  flex: 0 0 6px;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 4;
+  transition: background 0.15s ease;
+}
+.ai-resizer:hover,
+.ai-resizer:active {
+  background: color-mix(in srgb, var(--tx-green) 55%, transparent);
+}
 .sftp-sidebar :deep(.sftp-panel) {
   border-left: none;
   flex: 1;
@@ -713,8 +856,14 @@ onUnmounted(() => {
   color: #f87171;
   background: rgba(248, 113, 113, 0.1);
 }
-.sftp-show-btn {
+.tab-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
   margin-left: auto;
+}
+.sftp-show-btn,
+.ai-summary-btn {
   color: var(--tx-green-hover);
 }
 .tab {
@@ -786,5 +935,9 @@ onUnmounted(() => {
 }
 .state-panel.error {
   color: #f87171;
+}
+.state-panel-actions {
+  display: flex;
+  gap: 8px;
 }
 </style>

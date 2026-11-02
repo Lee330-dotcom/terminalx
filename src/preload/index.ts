@@ -2,6 +2,9 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { IpcRendererEvent } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import {
+  AiChatEvent,
+  AiChunkEvent,
+  AiDoneEvent,
   IpcChannels,
   RendererApi,
   SessionDataEvent,
@@ -46,6 +49,31 @@ const api: RendererApi = {
     const listener: (e: IpcRendererEvent, ev: SessionStatusEvent) => void = (_e, ev) => cb(ev)
     ipcRenderer.on(IpcChannels.evSessionStatus, listener)
     return () => ipcRenderer.removeListener(IpcChannels.evSessionStatus, listener)
+  },
+  aiStatus: () => ipcRenderer.invoke(IpcChannels.aiStatus),
+  aiAnalyze: (request) => ipcRenderer.invoke(IpcChannels.aiAnalyze, request),
+  cancelAi: (requestId) => ipcRenderer.send(IpcChannels.aiCancel, requestId),
+  setAiKey: (apiKey) => ipcRenderer.invoke(IpcChannels.aiSetKey, apiKey),
+  testAi: () => ipcRenderer.invoke(IpcChannels.aiTest),
+  onAiChunk: (cb): (() => void) => {
+    const listener: (e: IpcRendererEvent, ev: AiChunkEvent) => void = (_e, ev) => cb(ev)
+    ipcRenderer.on(IpcChannels.evAiChunk, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.evAiChunk, listener)
+  },
+  onAiDone: (cb): (() => void) => {
+    const listener: (e: IpcRendererEvent, ev: AiDoneEvent) => void = (_e, ev) => cb(ev)
+    ipcRenderer.on(IpcChannels.evAiDone, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.evAiDone, listener)
+  },
+  aiChatStart: (request) => ipcRenderer.invoke(IpcChannels.aiChatStart, request),
+  aiChatApprove: (requestId, callId, approved) =>
+    ipcRenderer.send(IpcChannels.aiChatApprove, requestId, callId, approved),
+  aiChatCancel: (requestId) => ipcRenderer.send(IpcChannels.aiChatCancel, requestId),
+  aiChatReset: (sessionId) => ipcRenderer.send(IpcChannels.aiChatReset, sessionId),
+  onAiChatEvent: (cb): (() => void) => {
+    const listener: (e: IpcRendererEvent, ev: AiChatEvent) => void = (_e, ev) => cb(ev)
+    ipcRenderer.on(IpcChannels.evAiChat, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.evAiChat, listener)
   },
   sftpList: (connectionId, path) => ipcRenderer.invoke(IpcChannels.sftpList, connectionId, path),
   sftpMkdir: (connectionId, path) => ipcRenderer.invoke(IpcChannels.sftpMkdir, connectionId, path),

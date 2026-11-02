@@ -1,6 +1,13 @@
 import { ipcMain, dialog, BrowserWindow, app } from 'electron'
 import { promises as fs } from 'fs'
-import { ConnectionInput, IpcChannels, ProbeTarget, Settings } from '@shared/types'
+import {
+  AiAnalysisRequest,
+  AiChatStartRequest,
+  ConnectionInput,
+  IpcChannels,
+  ProbeTarget,
+  Settings
+} from '@shared/types'
 import { AppContext } from './appContext'
 import { probeTargets } from './ssh/latencyProbe'
 import { describeSshError, testConnect } from './ssh/connectionManager'
@@ -106,7 +113,10 @@ export function registerIpcHandlers(ctx: AppContext): void {
 
   // ---- 终端会话 ----
   ipcMain.handle(IpcChannels.sessionOpen, (_e, connectionId) => ctx.sessions.open(connectionId))
-  ipcMain.handle(IpcChannels.sessionClose, (_e, sessionId) => ctx.sessions.close(sessionId))
+  ipcMain.handle(IpcChannels.sessionClose, (_e, sessionId) => {
+    ctx.agent.reset(sessionId)
+    return ctx.sessions.close(sessionId)
+  })
   ipcMain.handle(IpcChannels.sessionReconnect, (_e, sessionId) => ctx.sessions.reconnect(sessionId))
   ipcMain.handle(IpcChannels.sessionList, () => ctx.sessions.list())
   ipcMain.on(IpcChannels.sessionInput, (_e, sessionId: string, data: Uint8Array) => {
@@ -115,6 +125,26 @@ export function registerIpcHandlers(ctx: AppContext): void {
   ipcMain.on(IpcChannels.sessionResize, (_e, sessionId: string, cols: number, rows: number) => {
     ctx.sessions.resize(sessionId, cols, rows)
   })
+
+  // ---- AI 只读分析 ----
+  ipcMain.handle(IpcChannels.aiStatus, () => ctx.ai.status())
+  ipcMain.handle(IpcChannels.aiAnalyze, (_e, request: AiAnalysisRequest) => ctx.ai.analyze(request))
+  ipcMain.on(IpcChannels.aiCancel, (_e, requestId: string) => ctx.ai.cancel(requestId))
+  ipcMain.handle(IpcChannels.aiSetKey, (_e, apiKey: string | null) => ctx.ai.setApiKey(apiKey))
+  ipcMain.handle(IpcChannels.aiTest, () => ctx.ai.test())
+
+  // ---- AI 全自动助手 ----
+  ipcMain.handle(IpcChannels.aiChatStart, (_e, request: AiChatStartRequest) =>
+    ctx.agent.start(request)
+  )
+  ipcMain.on(
+    IpcChannels.aiChatApprove,
+    (_e, requestId: string, callId: string, approved: boolean) => {
+      ctx.agent.approve(requestId, callId, approved === true)
+    }
+  )
+  ipcMain.on(IpcChannels.aiChatCancel, (_e, requestId: string) => ctx.agent.cancel(requestId))
+  ipcMain.on(IpcChannels.aiChatReset, (_e, sessionId: string) => ctx.agent.reset(sessionId))
 
   // ---- SFTP ----
   ipcMain.handle(IpcChannels.sftpList, (_e, connectionId, path) =>

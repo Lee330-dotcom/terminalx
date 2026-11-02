@@ -8,6 +8,7 @@ import {
   Connection,
   Download,
   Files,
+  MagicStick,
   Search,
   Setting
 } from '@element-plus/icons-vue'
@@ -30,6 +31,7 @@ const searchQuery = ref('')
 const sections = [
   { id: 'theme', key: 'settings.theme', icon: Brush },
   { id: 'update', key: 'settings.update', icon: Download },
+  { id: 'ai', key: 'settings.ai', icon: MagicStick },
   { id: 'mcp', key: 'settings.mcp', icon: Connection },
   { id: 'backup', key: 'settings.backup', icon: Files },
   { id: 'system', key: 'settings.system', icon: Setting }
@@ -110,6 +112,11 @@ const uiScale = ref(100)
 const uiFont = ref('')
 const mcpPort = ref(8080)
 const closeButtonAction = ref<'quit' | 'hide'>('hide')
+const aiBaseUrl = ref('')
+const aiModel = ref('')
+const aiKeyInput = ref('')
+const aiKeySet = ref(false)
+const aiTesting = ref(false)
 
 function syncLocalRefs(): void {
   const s = settings.value
@@ -175,6 +182,68 @@ async function toggleTool(name: string, enabled: boolean): Promise<void> {
   await save({ mcpDisabledTools: [...disabled] })
 }
 
+async function syncAiState(): Promise<void> {
+  try {
+    const status = await window.api.aiStatus()
+    aiBaseUrl.value = status.baseUrl
+    aiModel.value = status.model
+    aiKeySet.value = status.keySet
+  } catch (err) {
+    ElMessage.error(t('ai.statusFailed', { err: String(err) }))
+  }
+}
+
+async function saveAi(): Promise<void> {
+  await save({ aiBaseUrl: aiBaseUrl.value.trim(), aiModel: aiModel.value.trim() })
+  ElMessage.success(t('ai.saved'))
+}
+
+async function saveKey(): Promise<void> {
+  const key = aiKeyInput.value.trim()
+  if (!key) return
+  const status = await window.api.setAiKey(key)
+  aiKeySet.value = status.keySet
+  aiKeyInput.value = ''
+  ElMessage.success(t('ai.keySavedMsg'))
+}
+
+async function clearKey(): Promise<void> {
+  try {
+    await ElMessageBox.confirm(t('ai.clearConfirm'), t('ai.key'), { type: 'warning' })
+  } catch {
+    return
+  }
+  const status = await window.api.setAiKey(null)
+  aiKeySet.value = status.keySet
+  ElMessage.success(t('ai.keyClearedMsg'))
+}
+
+async function testAi(): Promise<void> {
+  aiTesting.value = true
+  try {
+    // 输入框里尚未保存的 Key/地址/模型先落盘，避免「看起来配好了但测试说没配置」
+    if (aiKeyInput.value.trim()) {
+      const status = await window.api.setAiKey(aiKeyInput.value.trim())
+      aiKeySet.value = status.keySet
+      aiKeyInput.value = ''
+    }
+    const saved = settings.value
+    const baseUrl = aiBaseUrl.value.trim()
+    const model = aiModel.value.trim()
+    if (saved && (saved.aiBaseUrl !== baseUrl || saved.aiModel !== model)) {
+      await save({ aiBaseUrl: baseUrl, aiModel: model })
+    }
+    const result = await window.api.testAi()
+    if (result.ok) {
+      ElMessage.success(t('ai.testOk', { ms: String(result.durationMs ?? 0) }))
+    } else {
+      ElMessage.error(t('ai.testFailed', { err: result.error ?? '' }))
+    }
+  } finally {
+    aiTesting.value = false
+  }
+}
+
 async function copyUrl(): Promise<void> {
   await navigator.clipboard.writeText(`http://127.0.0.1:${mcpPort.value}/mcp`)
   ElMessage.success(t('mcp.urlCopied'))
@@ -235,6 +304,7 @@ async function checkUpdate(): Promise<void> {
 async function load(): Promise<void> {
   await settingsStore.load()
   syncLocalRefs()
+  await syncAiState()
   appInfo.value = await window.api.getAppInfo()
 }
 
@@ -571,6 +641,96 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                   />
                 </div>
               </div>
+            </div>
+          </template>
+
+          <!-- AI 只读分析 -->
+          <template v-if="activeSection === 'ai' && settings">
+            <div class="settings-card">
+              <div class="card-title">{{ t('ai.provider') }}</div>
+              <div class="setting-desc" style="margin-bottom: 8px">
+                {{ t('ai.providerDesc') }}
+              </div>
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">{{ t('ai.baseUrl') }}</div>
+                  <div class="setting-desc">{{ t('ai.baseUrlDesc') }}</div>
+                </div>
+                <el-input
+                  v-model="aiBaseUrl"
+                  style="width: 300px"
+                  placeholder="https://api.openai.com/v1"
+                  @change="saveAi"
+                />
+              </div>
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">{{ t('ai.model') }}</div>
+                  <div class="setting-desc">{{ t('ai.modelDesc') }}</div>
+                </div>
+                <el-input
+                  v-model="aiModel"
+                  style="width: 300px"
+                  placeholder="gpt-4o-mini"
+                  @change="saveAi"
+                />
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">{{ t('ai.autoExecute') }}</div>
+                  <div class="setting-desc">{{ t('ai.autoExecuteDesc') }}</div>
+                </div>
+                <el-switch
+                  :model-value="settings.aiAutoExecute"
+                  @change="(v) => save({ aiAutoExecute: v as boolean })"
+                />
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="card-title">{{ t('ai.key') }}</div>
+              <div class="setting-desc" style="margin-bottom: 8px">
+                {{ aiKeySet ? t('ai.keySaved') : t('ai.keyMissing') }}
+              </div>
+              <div class="token-row">
+                <el-input
+                  v-model="aiKeyInput"
+                  type="password"
+                  show-password
+                  :placeholder="t('ai.keyPlaceholder')"
+                  style="width: 280px"
+                />
+                <el-button
+                  size="small"
+                  type="primary"
+                  :disabled="!aiKeyInput.trim()"
+                  @click="saveKey"
+                >
+                  {{ t('common.save') }}
+                </el-button>
+                <el-button v-if="aiKeySet" size="small" type="danger" plain @click="clearKey">
+                  {{ t('ai.clearKey') }}
+                </el-button>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="setting-row">
+                <div>
+                  <div class="setting-label">{{ t('ai.test') }}</div>
+                  <div class="setting-desc">{{ t('ai.testDesc') }}</div>
+                </div>
+                <el-button size="small" :loading="aiTesting" @click="testAi">
+                  {{ t('ai.testBtn') }}
+                </el-button>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="setting-desc">{{ t('ai.readonlyNote') }}</div>
             </div>
           </template>
 

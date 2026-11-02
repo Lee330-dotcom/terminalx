@@ -5,6 +5,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 
 const props = defineProps<{ sessionId: string }>()
+const emit = defineEmits<{ explain: [text: string] }>()
 
 const commandNames = [
   'ls',
@@ -58,10 +59,35 @@ const commandHints = computed(() => {
 })
 
 const container = ref<HTMLDivElement>()
+const selectionPos = ref<{ left: number; top: number } | null>(null)
 let term: Terminal | null = null
 let fit: FitAddon | null = null
 let unsubData: (() => void) | null = null
+let unsubSelection: (() => void) | null = null
 let resizeObserver: ResizeObserver | null = null
+let lastMouse = { x: 0, y: 0 }
+
+function refreshExplainButton(): void {
+  requestAnimationFrame(() => {
+    if (!term || !container.value) return
+    if (!term.getSelection().trim()) {
+      selectionPos.value = null
+      return
+    }
+    const rect = container.value.getBoundingClientRect()
+    selectionPos.value = {
+      left: Math.max(8, Math.min(lastMouse.x - rect.left - 24, rect.width - 110)),
+      top: Math.max(8, lastMouse.y - rect.top + 10)
+    }
+  })
+}
+
+function explainSelection(): void {
+  const text = term?.getSelection() ?? ''
+  selectionPos.value = null
+  term?.clearSelection()
+  if (text.trim()) emit('explain', text)
+}
 
 function safeFit(): void {
   try {
@@ -166,6 +192,13 @@ onMounted(() => {
     }
   })
 
+  // 选区清空时隐藏按钮；显示与定位等到 mouseup，避免拖动过程中闪烁
+  const selectionDisposable = term.onSelectionChange(() => {
+    if (!term?.getSelection().trim()) selectionPos.value = null
+  })
+  unsubSelection = () => selectionDisposable.dispose()
+  container.value!.addEventListener('mouseup', onMouseUp)
+
   resizeObserver = new ResizeObserver(() => {
     safeFit()
     updateHintPosition()
@@ -173,8 +206,15 @@ onMounted(() => {
   resizeObserver.observe(container.value!)
 })
 
+function onMouseUp(e: MouseEvent): void {
+  lastMouse = { x: e.clientX, y: e.clientY }
+  refreshExplainButton()
+}
+
 onBeforeUnmount(() => {
   unsubData?.()
+  unsubSelection?.()
+  container.value?.removeEventListener('mouseup', onMouseUp)
   resizeObserver?.disconnect()
   term?.dispose()
   term = null
@@ -209,6 +249,15 @@ defineExpose({ fit: safeFit })
         <span class="command-hints-settings">⚙</span>
       </div>
     </div>
+    <button
+      v-if="selectionPos"
+      class="ai-explain-btn"
+      :style="{ left: `${selectionPos.left}px`, top: `${selectionPos.top}px` }"
+      @mousedown.prevent
+      @click.stop="explainSelection"
+    >
+      ✦ AI 解释
+    </button>
   </div>
 </template>
 
@@ -285,5 +334,22 @@ defineExpose({ fit: safeFit })
 .command-hints-settings {
   color: #9ca3af;
   font-size: 16px;
+}
+.ai-explain-btn {
+  position: absolute;
+  z-index: 8;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--tx-green) 45%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--tx-panel) 92%, transparent);
+  color: var(--tx-green-hover);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+.ai-explain-btn:hover {
+  background: color-mix(in srgb, var(--tx-green) 18%, var(--tx-panel));
+  color: var(--tx-text);
 }
 </style>

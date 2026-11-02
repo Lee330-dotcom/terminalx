@@ -98,7 +98,100 @@ export interface Settings {
   confirmOnClose: boolean
   /** 界面语言 */
   language: 'zh-CN' | 'en-US'
+  /** OpenAI 兼容服务地址，如 https://api.openai.com/v1 */
+  aiBaseUrl: string
+  /** 模型名，空串表示未配置 */
+  aiModel: string
+  /** 允许助手自动执行只读白名单命令；关闭时所有命令都需要确认 */
+  aiAutoExecute: boolean
 }
+
+// ---- AI 只读分析 ----
+
+export type AiAnalysisKind =
+  'selection-explanation' | 'session-summary' | 'connection-diagnosis' | 'command-suggestion'
+
+export interface AiAnalysisRequest {
+  /** 渲染进程生成，用于关联流式事件 */
+  requestId: string
+  kind: AiAnalysisKind
+  sessionId?: string
+  /** 选段解释的选中文本 */
+  selection?: string
+  connectionId?: string
+  errorMessage?: string
+  /** 命令建议的自然语言指令 */
+  instruction?: string
+}
+
+export interface AiStatus {
+  /** Base URL、模型与 API Key 都已配置 */
+  configured: boolean
+  /** 已保存 API Key（不回传内容） */
+  keySet: boolean
+  baseUrl: string
+  model: string
+}
+
+export interface AiChunkEvent {
+  requestId: string
+  delta: string
+}
+
+export interface AiDoneEvent {
+  requestId: string
+  error?: string
+  cancelled?: boolean
+}
+
+export interface AiTestResult {
+  ok: boolean
+  error?: string
+  durationMs?: number
+}
+
+// ---- AI 助手（全自动） ----
+
+export type CommandRiskLevel = 'low' | 'medium' | 'high' | 'unknown'
+
+export interface AiChatStartRequest {
+  requestId: string
+  sessionId: string
+  connectionId: string
+  text: string
+}
+
+export interface AiChatToolResult {
+  stdout: string
+  stderr: string
+  exitCode: number | null
+  truncated: boolean
+  durationMs: number
+}
+
+export type AiChatEvent =
+  | { type: 'delta'; requestId: string; delta: string }
+  | {
+      type: 'tool-call'
+      requestId: string
+      callId: string
+      command: string
+      purpose: string
+      risk: CommandRiskLevel
+      requiresApproval: boolean
+      reason?: string
+    }
+  | {
+      type: 'tool-result'
+      requestId: string
+      callId: string
+      ok: boolean
+      rejected?: boolean
+      error?: string
+      result?: AiChatToolResult
+    }
+  | { type: 'step-limit'; requestId: string; limit: number }
+  | { type: 'done'; requestId: string; error?: string; cancelled?: boolean }
 
 export interface AppInfo {
   version: string
@@ -193,7 +286,19 @@ export const IpcChannels = {
   sftpUpload: 'sftp:upload',
   sftpDownload: 'sftp:download',
   sftpCancel: 'sftp:cancel',
+  aiStatus: 'ai:status',
+  aiAnalyze: 'ai:analyze',
+  aiCancel: 'ai:cancel',
+  aiSetKey: 'ai:set-key',
+  aiTest: 'ai:test',
+  aiChatStart: 'ai:chat-start',
+  aiChatApprove: 'ai:chat-approve',
+  aiChatCancel: 'ai:chat-cancel',
+  aiChatReset: 'ai:chat-reset',
   // 主进程 -> 渲染进程事件
+  evAiChunk: 'ev:ai:chunk',
+  evAiDone: 'ev:ai:done',
+  evAiChat: 'ev:ai:chat',
   evSessionData: 'ev:session:data',
   evSessionStatus: 'ev:session:status',
   evTransferProgress: 'ev:transfer:progress',
@@ -256,6 +361,19 @@ export interface RendererApi {
   listSessions(): Promise<SessionInfo[]>
   onSessionData(cb: (ev: SessionDataEvent) => void): () => void
   onSessionStatus(cb: (ev: SessionStatusEvent) => void): () => void
+  aiStatus(): Promise<AiStatus>
+  /** 发起只读分析，请求在后台流式推送；调用方需先自行生成 requestId */
+  aiAnalyze(request: AiAnalysisRequest): Promise<void>
+  cancelAi(requestId: string): void
+  setAiKey(apiKey: string | null): Promise<AiStatus>
+  testAi(): Promise<AiTestResult>
+  onAiChunk(cb: (ev: AiChunkEvent) => void): () => void
+  onAiDone(cb: (ev: AiDoneEvent) => void): () => void
+  aiChatStart(request: AiChatStartRequest): Promise<void>
+  aiChatApprove(requestId: string, callId: string, approved: boolean): void
+  aiChatCancel(requestId: string): void
+  aiChatReset(sessionId: string): void
+  onAiChatEvent(cb: (ev: AiChatEvent) => void): () => void
   sftpList(connectionId: string, path: string): Promise<SftpListResult>
   sftpMkdir(connectionId: string, path: string): Promise<void>
   sftpDelete(connectionId: string, path: string): Promise<void>

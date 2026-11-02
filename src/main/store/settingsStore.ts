@@ -23,7 +23,10 @@ function defaultSettings(): Settings {
     blockSystemSleep: false,
     closeButtonAction: 'hide',
     confirmOnClose: false,
-    language: 'zh-CN'
+    language: 'zh-CN',
+    aiBaseUrl: 'https://api.openai.com/v1',
+    aiModel: '',
+    aiAutoExecute: false
   }
 }
 
