@@ -2,6 +2,9 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
+  ArrowDown,
+  ArrowUp,
+  Close,
   Connection,
   Folder,
   FolderAdd,
@@ -27,6 +30,11 @@ import { useAiChatStore } from './stores/aiChat'
 import { useAppStore } from './stores/app'
 import { useSettingsStore } from './stores/settings'
 import { t, currentLang } from './i18n'
+import {
+  getTerminalSearch,
+  resetTerminalSearchResult,
+  terminalSearchResult
+} from './utils/terminalSearch'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import en from 'element-plus/es/locale/lang/en'
 import type { ConnectionFilter } from './filter'
@@ -54,6 +62,13 @@ const aiWidth = ref(380)
 let resizingAi = false
 let aiResizeStartX = 0
 let aiResizeStartWidth = 0
+
+const terminalSearchQuery = ref('')
+const terminalSearchLabel = computed(() => {
+  if (!terminalSearchQuery.value.trim()) return ''
+  const { index, total } = terminalSearchResult
+  return total ? `${index >= 0 ? index + 1 : '?'}/${total}` : '0/0'
+})
 
 function startSftpResize(event: MouseEvent): void {
   event.preventDefault()
@@ -197,6 +212,68 @@ function toggleAiPanel(): void {
   void aiChatStore.refreshStatus()
   if (activeTab.value?.status !== 'connected') aiStore.panelTab = 'analysis'
 }
+
+function activeTerminalSearch(): ReturnType<typeof getTerminalSearch> {
+  const tab = sessionStore.activeTab
+  if (!tab || tab.status !== 'connected') return undefined
+  return getTerminalSearch(tab.sessionId)
+}
+
+function runTerminalSearch(incremental: boolean): void {
+  const api = activeTerminalSearch()
+  const query = terminalSearchQuery.value.trim()
+  if (!api || !query) {
+    api?.clear()
+    resetTerminalSearchResult()
+    return
+  }
+  api.findNext(query, incremental)
+}
+
+function stepTerminalSearch(delta: number): void {
+  const api = activeTerminalSearch()
+  const query = terminalSearchQuery.value.trim()
+  if (!api || !query) return
+  if (delta > 0) api.findNext(query, false)
+  else api.findPrevious(query)
+}
+
+function clearTerminalSearch(): void {
+  activeTerminalSearch()?.clear()
+  terminalSearchQuery.value = ''
+  resetTerminalSearchResult()
+}
+
+function onTerminalSearchKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    clearTerminalSearch()
+    return
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    stepTerminalSearch(event.shiftKey ? -1 : 1)
+  }
+}
+
+watch(terminalSearchQuery, () => runTerminalSearch(true))
+
+watch(
+  () => sessionStore.activeSessionId,
+  async (nextId, prevId) => {
+    if (prevId && prevId !== nextId) getTerminalSearch(prevId)?.clear()
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)))
+    if (terminalSearchQuery.value.trim()) runTerminalSearch(true)
+    else resetTerminalSearchResult()
+  }
+)
+
+watch(
+  () => sessionStore.activeTab?.status,
+  (status) => {
+    if (status !== 'connected') resetTerminalSearchResult()
+  }
+)
 
 watch(
   () => ({ id: sessionStore.activeSessionId, status: sessionStore.activeTab?.status ?? null }),
@@ -415,13 +492,67 @@ onUnmounted(() => {
                 >
               </div>
               <div class="tab-actions">
-                <span
+                <div
                   v-if="activeTab?.status === 'connected'"
-                  class="sub-tab ai-summary-btn"
-                  @click="activeTab && summarizeSession(activeTab)"
+                  class="terminal-search"
+                  title="搜索当前终端页面的内容"
                 >
-                  ✦ AI 摘要
-                </span>
+                  <el-icon class="terminal-search-icon"><Search /></el-icon>
+                  <input
+                    v-model="terminalSearchQuery"
+                    class="terminal-search-input"
+                    type="text"
+                    spellcheck="false"
+                    placeholder="搜索当前页面"
+                    aria-label="搜索当前页面的内容"
+                    @keydown="onTerminalSearchKeydown"
+                  />
+                  <span v-if="terminalSearchLabel" class="terminal-search-count">
+                    {{ terminalSearchLabel }}
+                  </span>
+                  <button
+                    class="terminal-search-btn"
+                    title="上一个"
+                    aria-label="上一个"
+                    :disabled="!terminalSearchResult.total"
+                    @mousedown.prevent
+                    @click="stepTerminalSearch(-1)"
+                  >
+                    <el-icon><ArrowUp /></el-icon>
+                  </button>
+                  <button
+                    class="terminal-search-btn"
+                    title="下一个"
+                    aria-label="下一个"
+                    :disabled="!terminalSearchResult.total"
+                    @mousedown.prevent
+                    @click="stepTerminalSearch(1)"
+                  >
+                    <el-icon><ArrowDown /></el-icon>
+                  </button>
+                  <button
+                    class="terminal-search-btn"
+                    title="清空"
+                    aria-label="清空"
+                    :disabled="!terminalSearchQuery"
+                    @mousedown.prevent
+                    @click="clearTerminalSearch"
+                  >
+                    <el-icon><Close /></el-icon>
+                  </button>
+                </div>
+                <el-tooltip
+                  v-if="activeTab?.status === 'connected'"
+                  placement="bottom"
+                  content="读取当前会话最近 300 行输出，由 AI 总结关键信息、异常与下一步建议（只读，不执行命令）"
+                >
+                  <span
+                    class="sub-tab ai-summary-btn"
+                    @click="activeTab && summarizeSession(activeTab)"
+                  >
+                    ✦ AI 摘要
+                  </span>
+                </el-tooltip>
                 <span
                   v-if="!sftpVisible && activeConnectionId"
                   class="sub-tab sftp-show-btn"
@@ -861,6 +992,75 @@ onUnmounted(() => {
   align-items: center;
   gap: 2px;
   margin-left: auto;
+}
+.terminal-search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  margin-right: 6px;
+  padding: 0 4px 0 7px;
+  border: 1px solid var(--tx-border);
+  border-radius: 6px;
+  background: var(--tx-bg);
+  transition: border-color 0.15s ease;
+}
+.terminal-search:focus-within {
+  border-color: var(--tx-green);
+}
+.terminal-search-icon {
+  flex-shrink: 0;
+  color: var(--tx-text-3);
+  font-size: 12px;
+}
+.terminal-search-input {
+  width: 140px;
+  min-width: 0;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--tx-text);
+  font: inherit;
+  font-size: 12px;
+}
+.terminal-search-input::placeholder {
+  color: var(--tx-text-3);
+}
+.terminal-search-count {
+  flex-shrink: 0;
+  min-width: 30px;
+  color: var(--tx-text-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.terminal-search-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tx-text-3);
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+.terminal-search-btn:hover:not(:disabled) {
+  color: var(--tx-text);
+  background: color-mix(in srgb, var(--tx-text-3) 16%, transparent);
+}
+.terminal-search-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 .sftp-show-btn,
 .ai-summary-btn {

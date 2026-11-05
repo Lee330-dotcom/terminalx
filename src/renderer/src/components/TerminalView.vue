@@ -2,7 +2,18 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { SearchAddon } from '@xterm/addon-search'
+import { registerTerminalSearch, terminalSearchResult } from '../utils/terminalSearch'
 import '@xterm/xterm/css/xterm.css'
+
+const SEARCH_DECORATIONS = {
+  matchBackground: '#374151',
+  matchBorder: '#fbbf24',
+  matchOverviewRuler: '#fbbf24',
+  activeMatchBackground: '#b45309',
+  activeMatchBorder: '#fbbf24',
+  activeMatchColorOverviewRuler: '#fbbf24'
+}
 
 const props = defineProps<{ sessionId: string }>()
 const emit = defineEmits<{ explain: [text: string] }>()
@@ -62,6 +73,9 @@ const container = ref<HTMLDivElement>()
 const selectionPos = ref<{ left: number; top: number } | null>(null)
 let term: Terminal | null = null
 let fit: FitAddon | null = null
+let search: SearchAddon | null = null
+let unregisterSearch: (() => void) | null = null
+let searchResultSub: { dispose(): void } | null = null
 let unsubData: (() => void) | null = null
 let unsubSelection: (() => void) | null = null
 let resizeObserver: ResizeObserver | null = null
@@ -129,6 +143,7 @@ onMounted(() => {
     fontFamily: 'Menlo, Monaco, "Courier New", monospace',
     cursorBlink: true,
     scrollback: 5000,
+    allowProposedApi: true,
     theme: {
       background: '#141414',
       foreground: '#e5e7eb',
@@ -154,6 +169,19 @@ onMounted(() => {
   })
   fit = new FitAddon()
   term.loadAddon(fit)
+  search = new SearchAddon()
+  term.loadAddon(search)
+  searchResultSub = search.onDidChangeResults(({ resultIndex, resultCount }) => {
+    terminalSearchResult.index = resultIndex
+    terminalSearchResult.total = resultCount
+  })
+  unregisterSearch = registerTerminalSearch(props.sessionId, {
+    findNext: (query, incremental) =>
+      search?.findNext(query, { incremental, decorations: SEARCH_DECORATIONS }) ?? false,
+    findPrevious: (query) =>
+      search?.findPrevious(query, { decorations: SEARCH_DECORATIONS }) ?? false,
+    clear: () => search?.clearDecorations()
+  })
   term.open(container.value!)
   safeFit()
   updateHintPosition()
@@ -214,6 +242,8 @@ function onMouseUp(e: MouseEvent): void {
 onBeforeUnmount(() => {
   unsubData?.()
   unsubSelection?.()
+  unregisterSearch?.()
+  searchResultSub?.dispose()
   container.value?.removeEventListener('mouseup', onMouseUp)
   resizeObserver?.disconnect()
   term?.dispose()

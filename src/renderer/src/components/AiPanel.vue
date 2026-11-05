@@ -7,6 +7,7 @@ import { useAiChatStore, ChatTimelineItem } from '../stores/aiChat'
 import { useSessionStore } from '../stores/sessions'
 import { useSettingsStore } from '../stores/settings'
 import type { CommandRisk, CommandSuggestion } from '../utils/aiCommand'
+import { renderMarkdown } from '../utils/markdown'
 
 const emit = defineEmits<{ close: []; 'open-settings': [] }>()
 const props = withDefaults(defineProps<{ width?: number }>(), { width: 380 })
@@ -72,6 +73,7 @@ const currentScope = computed(() =>
 )
 
 const autoExecuteEnabled = computed(() => settingsStore.settings?.aiAutoExecute === true)
+const analysisHtml = computed(() => renderMarkdown(aiStore.text))
 
 const RISK_LABELS: Record<CommandRisk, string> = {
   low: '低风险',
@@ -296,11 +298,14 @@ function outputText(item: ChatTimelineItem): string {
           </div>
         </div>
 
-        <pre
+        <!-- eslint-disable vue/no-v-html -- 已经过 DOMPurify 净化 -->
+        <div
           v-if="aiStore.text"
-          class="ai-text"
+          class="ai-text markdown-body"
           :class="{ 'with-commands': aiStore.commands.length }"
-          >{{ aiStore.text }}</pre>
+          v-html="analysisHtml"
+        />
+        <!-- eslint-enable vue/no-v-html -->
         <div v-else-if="aiStore.running" class="ai-hint">
           {{ aiStore.kind === 'command-suggestion' ? '正在生成命令…' : '正在分析…' }}
         </div>
@@ -327,9 +332,13 @@ function outputText(item: ChatTimelineItem): string {
             <div v-if="item.type === 'user'" class="chat-msg user">
               <div class="chat-bubble">{{ item.text }}</div>
             </div>
-            <pre v-else-if="item.type === 'assistant'" class="chat-msg assistant">{{
-              item.text
-            }}</pre>
+            <!-- eslint-disable vue/no-v-html -- 已经过 DOMPurify 净化 -->
+            <div
+              v-else-if="item.type === 'assistant'"
+              class="chat-msg assistant markdown-body"
+              v-html="renderMarkdown(item.text ?? '')"
+            />
+            <!-- eslint-enable vue/no-v-html -->
             <div v-else-if="item.type === 'notice'" class="chat-notice">{{ item.text }}</div>
             <div v-else class="chat-tool" :class="`risk-${item.risk ?? 'unknown'}`">
               <div class="chat-tool-head">
@@ -543,13 +552,114 @@ function outputText(item: ChatTimelineItem): string {
   font-family: inherit;
   font-size: 12.5px;
   line-height: 1.7;
-  white-space: pre-wrap;
   word-break: break-word;
 }
 .ai-text.with-commands {
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px dashed var(--tx-border);
+}
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4),
+.markdown-body :deep(h5),
+.markdown-body :deep(h6) {
+  margin: 14px 0 6px;
+  color: var(--tx-text);
+  font-weight: 600;
+  line-height: 1.4;
+}
+.markdown-body :deep(h1) {
+  font-size: 15px;
+}
+.markdown-body :deep(h2) {
+  font-size: 14px;
+}
+.markdown-body :deep(h3),
+.markdown-body :deep(h4),
+.markdown-body :deep(h5),
+.markdown-body :deep(h6) {
+  font-size: 13px;
+}
+.markdown-body :deep(p) {
+  margin: 0 0 8px;
+}
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  margin: 0 0 8px;
+  padding-left: 18px;
+}
+.markdown-body :deep(li) {
+  margin: 2px 0;
+}
+.markdown-body :deep(li > p) {
+  margin: 0;
+}
+.markdown-body :deep(strong) {
+  color: var(--tx-text);
+  font-weight: 600;
+}
+.markdown-body :deep(em) {
+  color: var(--tx-text);
+}
+.markdown-body :deep(code) {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--tx-bg) 70%, var(--tx-panel));
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11.5px;
+}
+.markdown-body :deep(pre) {
+  margin: 8px 0;
+  padding: 10px;
+  border-radius: 6px;
+  background: var(--tx-bg, #0b1220);
+  overflow-x: auto;
+}
+.markdown-body :deep(pre code) {
+  padding: 0;
+  background: none;
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre;
+}
+.markdown-body :deep(blockquote) {
+  margin: 8px 0;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--tx-border-strong);
+  color: var(--tx-text-3);
+}
+.markdown-body :deep(a) {
+  color: var(--tx-green-hover);
+  text-decoration: none;
+}
+.markdown-body :deep(a:hover) {
+  text-decoration: underline;
+}
+.markdown-body :deep(hr) {
+  margin: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--tx-border);
+}
+.markdown-body :deep(table) {
+  width: 100%;
+  margin: 8px 0;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.markdown-body :deep(th),
+.markdown-body :deep(td) {
+  padding: 4px 6px;
+  border: 1px solid var(--tx-border);
+  text-align: left;
+}
+.markdown-body :deep(th) {
+  color: var(--tx-text);
+  background: color-mix(in srgb, var(--tx-bg) 60%, var(--tx-panel));
+}
+.markdown-body :deep(img) {
+  max-width: 100%;
 }
 .ai-commands {
   display: flex;
@@ -709,13 +819,17 @@ function outputText(item: ChatTimelineItem): string {
   word-break: break-word;
 }
 .chat-msg.assistant {
-  margin: 0;
   color: var(--tx-text-2);
   font-family: inherit;
   font-size: 12.5px;
   line-height: 1.7;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+.chat-msg.assistant :deep(> :first-child) {
+  margin-top: 0;
+}
+.chat-msg.assistant :deep(> :last-child) {
+  margin-bottom: 0;
 }
 .chat-notice {
   padding: 2px 0;
