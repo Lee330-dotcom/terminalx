@@ -150,6 +150,62 @@ export interface AiTestResult {
   durationMs?: number
 }
 
+/** 服务端 /models 目录里的一个模型条目 */
+export interface AiModelInfo {
+  id: string
+  ownedBy?: string
+  created?: number
+}
+
+export interface AiModelListResult {
+  ok: boolean
+  models: AiModelInfo[]
+  error?: string
+  durationMs: number
+}
+
+/** 单次诊断探针的执行结果 */
+export interface AiDiagnoseProbe {
+  /** 探针标识，界面据此取文案：identity-zh / identity-en */
+  id: string
+  ok: boolean
+  /** 响应体里回显的模型名（服务端实际路由到的模型） */
+  servedModel?: string
+  /** 模型自述里识别出的模型名 */
+  reportedModel?: string
+  /** 模型原始回答（已截断） */
+  answer?: string
+  error?: string
+  durationMs: number
+}
+
+export type AiDiagnoseVerdict = 'match' | 'partial' | 'mismatch' | 'unknown'
+export type AiDiagnoseConfidence = 'high' | 'medium' | 'low'
+
+export interface AiDiagnoseResult {
+  /** 诊断流程本身是否跑通（配置缺失、请求失败时为 false） */
+  ok: boolean
+  error?: string
+  /** 用户配置里填写的模型名 */
+  configuredModel: string
+  /** 接口响应回显的模型名 */
+  servedModel?: string
+  /** 模型自述的模型名 */
+  reportedModel?: string
+  catalogChecked: boolean
+  /** 配置的模型是否出现在 /models 目录中 */
+  catalogMatch?: boolean
+  /** 目录中同族模型（最多 5 个），便于用户纠正配置 */
+  catalogSimilar: string[]
+  catalogSize: number
+  verdict: AiDiagnoseVerdict
+  confidence: AiDiagnoseConfidence
+  /** 一致性得分：>=2 一致，>=0.5 存疑，其余不一致 */
+  score: number
+  probes: AiDiagnoseProbe[]
+  durationMs: number
+}
+
 // ---- AI 助手（全自动） ----
 
 export type CommandRiskLevel = 'low' | 'medium' | 'high' | 'unknown'
@@ -291,6 +347,8 @@ export const IpcChannels = {
   aiCancel: 'ai:cancel',
   aiSetKey: 'ai:set-key',
   aiTest: 'ai:test',
+  aiListModels: 'ai:list-models',
+  aiDiagnose: 'ai:diagnose',
   aiChatStart: 'ai:chat-start',
   aiChatApprove: 'ai:chat-approve',
   aiChatCancel: 'ai:chat-cancel',
@@ -367,6 +425,10 @@ export interface RendererApi {
   cancelAi(requestId: string): void
   setAiKey(apiKey: string | null): Promise<AiStatus>
   testAi(): Promise<AiTestResult>
+  /** 拉取服务端模型目录（仅查询 /models，不消耗生成额度） */
+  listAiModels(): Promise<AiModelListResult>
+  /** 诊断配置的模型与服务端实际返回的模型是否一致 */
+  diagnoseAi(): Promise<AiDiagnoseResult>
   onAiChunk(cb: (ev: AiChunkEvent) => void): () => void
   onAiDone(cb: (ev: AiDoneEvent) => void): () => void
   aiChatStart(request: AiChatStartRequest): Promise<void>

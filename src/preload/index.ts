@@ -55,6 +55,8 @@ const api: RendererApi = {
   cancelAi: (requestId) => ipcRenderer.send(IpcChannels.aiCancel, requestId),
   setAiKey: (apiKey) => ipcRenderer.invoke(IpcChannels.aiSetKey, apiKey),
   testAi: () => ipcRenderer.invoke(IpcChannels.aiTest),
+  listAiModels: () => ipcRenderer.invoke(IpcChannels.aiListModels),
+  diagnoseAi: () => ipcRenderer.invoke(IpcChannels.aiDiagnose),
   onAiChunk: (cb): (() => void) => {
     const listener: (e: IpcRendererEvent, ev: AiChunkEvent) => void = (_e, ev) => cb(ev)
     ipcRenderer.on(IpcChannels.evAiChunk, listener)

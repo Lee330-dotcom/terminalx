@@ -132,6 +132,8 @@ export function registerIpcHandlers(ctx: AppContext): void {
   ipcMain.on(IpcChannels.aiCancel, (_e, requestId: string) => ctx.ai.cancel(requestId))
   ipcMain.handle(IpcChannels.aiSetKey, (_e, apiKey: string | null) => ctx.ai.setApiKey(apiKey))
   ipcMain.handle(IpcChannels.aiTest, () => ctx.ai.test())
+  ipcMain.handle(IpcChannels.aiListModels, () => ctx.ai.listModels())
+  ipcMain.handle(IpcChannels.aiDiagnose, () => ctx.ai.diagnose())
 
   // ---- AI 全自动助手 ----
   ipcMain.handle(IpcChannels.aiChatStart, (_e, request: AiChatStartRequest) =>

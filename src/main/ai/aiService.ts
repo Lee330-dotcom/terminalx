@@ -1,7 +1,11 @@
 import {
   AiAnalysisRequest,
   AiChunkEvent,
+  AiDiagnoseProbe,
+  AiDiagnoseResult,
   AiDoneEvent,
+  AiModelInfo,
+  AiModelListResult,
   AiStatus,
   AiTestResult,
   ConnectionMeta
@@ -10,6 +14,13 @@ import { ConnectionStore } from '../store/connectionStore'
 import { CredentialVault } from '../store/credentialVault'
 import { SettingsStore } from '../store/settingsStore'
 import { SessionManager } from '../ssh/sessionManager'
+import {
+  DIAGNOSE_PROBES,
+  extractReportedModel,
+  normalizeModelId,
+  pickSimilarModels,
+  summarizeDiagnosis
+} from './modelDiagnostics'
 import {
   ChatMessage,
   commandSuggestionMessages,
@@ -27,7 +38,11 @@ export const COMMAND_CONTEXT_LINE_LIMIT = 120
 
 const REQUEST_TIMEOUT_MS = 120_000
 const TEST_TIMEOUT_MS = 20_000
+const MODELS_TIMEOUT_MS = 15_000
+const DIAGNOSE_TIMEOUT_MS = 45_000
 const MAX_ERROR_BODY = 500
+/** 诊断回答展示上限，避免把整段推理塞进设置面板 */
+const MAX_PROBE_ANSWER = 400
 
 export interface AiServiceDeps {
   settings: SettingsStore
@@ -121,18 +136,25 @@ export class AiService {
     return secret?.apiKey ?? null
   }
 
-  private async resolveConfig(): Promise<ResolvedConfig> {
+  /** 只校验地址与密钥（获取模型目录、诊断前置检查用，不要求已填模型） */
+  private async resolveEndpoint(): Promise<{ baseUrl: string; apiKey: string }> {
     const settings = await this.deps.settings.get()
     const apiKey = (await this.getApiKey()) ?? ''
     const baseUrl = settings.aiBaseUrl.trim()
-    const model = settings.aiModel.trim()
     const missing: string[] = []
     if (!baseUrl) missing.push('服务地址')
-    if (!model) missing.push('模型名')
     if (!apiKey) missing.push('API Key（输入后需点击保存）')
     if (missing.length > 0) {
       throw new Error(`AI 配置不完整，缺少：${missing.join('、')}`)
     }
+    return { baseUrl, apiKey }
+  }
+
+  private async resolveConfig(): Promise<ResolvedConfig> {
+    const { baseUrl, apiKey } = await this.resolveEndpoint()
+    const settings = await this.deps.settings.get()
+    const model = settings.aiModel.trim()
+    if (!model) throw new Error('AI 配置不完整，缺少：模型名')
     return { baseUrl, model, apiKey }
   }
 
@@ -180,6 +202,181 @@ export class AiService {
       }
     } catch (err) {
       return { ok: false, error: errorMessage(err), durationMs: Date.now() - started }
+    }
+  }
+
+  /**
+   * 拉取服务端模型目录：只查询 /models，不产生生成请求、不消耗额度。
+   * 失败时返回 ok=false，界面退回「手动输入模型名」。
+   */
+  async listModels(): Promise<AiModelListResult> {
+    const started = Date.now()
+    try {
+      const { baseUrl, apiKey } = await this.resolveEndpoint()
+      const controller = new AbortController()
+      const timer = setTimeout(
+        () => controller.abort(new Error('获取模型列表超时（15 秒）')),
+        MODELS_TIMEOUT_MS
+      )
+      try {
+        const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/models`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${apiKey}` },
+          signal: controller.signal
+        })
+        if (!res.ok) {
+          const body = await res.text().catch(() => '')
+          throw new Error(
+            `模型目录返回 ${res.status}${body ? `：${body.slice(0, MAX_ERROR_BODY)}` : ''}`
+          )
+        }
+        const payload = (await res.json()) as { data?: unknown }
+        const entries = Array.isArray(payload.data) ? payload.data : []
+        const models: AiModelInfo[] = []
+        for (const item of entries) {
+          if (!item || typeof item !== 'object') continue
+          const row = item as { id?: unknown; owned_by?: unknown; created?: unknown }
+          if (typeof row.id !== 'string' || !row.id.trim()) continue
+          models.push({
+            id: row.id.trim(),
+            ownedBy: typeof row.owned_by === 'string' ? row.owned_by : undefined,
+            created: typeof row.created === 'number' ? row.created : undefined
+          })
+        }
+        models.sort((a, b) => a.id.localeCompare(b.id))
+        return { ok: true, models, durationMs: Date.now() - started }
+      } finally {
+        clearTimeout(timer)
+      }
+    } catch (err) {
+      return { ok: false, models: [], error: errorMessage(err), durationMs: Date.now() - started }
+    }
+  }
+
+  /**
+   * 模型诊断：核对「配置里写的模型」与「服务端实际返回的模型」是否一致。
+   *
+   * 三个信号源，权重从高到低：
+   * 1. 响应体 `model` 字段——服务端路由到的真实模型（客观，但中转站可能原样回显请求值）；
+   * 2. 模型自述——两条不同语言的探针交叉验证（主观，但能抓出「回显造假」）；
+   * 3. `/models` 目录——配置的模型是否真实存在（辅助）。
+   */
+  async diagnose(): Promise<AiDiagnoseResult> {
+    const started = Date.now()
+    let config: ResolvedConfig
+    try {
+      config = await this.resolveConfig()
+    } catch (err) {
+      return {
+        ok: false,
+        error: errorMessage(err),
+        configuredModel: '',
+        catalogChecked: false,
+        catalogSimilar: [],
+        catalogSize: 0,
+        verdict: 'unknown',
+        confidence: 'low',
+        score: 0,
+        probes: [],
+        durationMs: Date.now() - started
+      }
+    }
+
+    const catalog = await this.listModels()
+    const probes: AiDiagnoseProbe[] = []
+    let servedModel: string | undefined
+    let reportedModel: string | undefined
+
+    for (const probe of DIAGNOSE_PROBES) {
+      const result = await this.runProbe(config, probe.id, probe.prompt)
+      probes.push(result)
+      if (!servedModel && result.servedModel) servedModel = result.servedModel
+      if (!reportedModel && result.reportedModel) reportedModel = result.reportedModel
+    }
+
+    if (!probes.some((p) => p.ok)) {
+      return {
+        ok: false,
+        error: probes.find((p) => p.error)?.error ?? '诊断请求全部失败',
+        configuredModel: config.model,
+        catalogChecked: catalog.ok,
+        catalogSimilar: [],
+        catalogSize: catalog.models.length,
+        verdict: 'unknown',
+        confidence: 'low',
+        score: 0,
+        probes,
+        durationMs: Date.now() - started
+      }
+    }
+
+    const catalogIds = catalog.models.map((m) => m.id)
+    const configuredNorm = normalizeModelId(config.model)
+    const catalogMatch = catalog.ok
+      ? catalogIds.some((id) => normalizeModelId(id) === configuredNorm)
+      : undefined
+    const summary = summarizeDiagnosis({
+      configured: config.model,
+      served: servedModel,
+      reported: reportedModel,
+      catalogMatch
+    })
+
+    return {
+      ok: true,
+      configuredModel: config.model,
+      servedModel,
+      reportedModel,
+      catalogChecked: catalog.ok,
+      catalogMatch,
+      catalogSize: catalogIds.length,
+      catalogSimilar: pickSimilarModels(config.model, catalogIds),
+      verdict: summary.verdict,
+      confidence: summary.confidence,
+      score: summary.score,
+      probes,
+      durationMs: Date.now() - started
+    }
+  }
+
+  /** 发一条短探针，取回响应的 model 字段与回答内容 */
+  private async runProbe(
+    config: ResolvedConfig,
+    id: string,
+    prompt: string
+  ): Promise<AiDiagnoseProbe> {
+    const started = Date.now()
+    const controller = new AbortController()
+    const timer = setTimeout(
+      () => controller.abort(new Error('诊断请求超时（45 秒）')),
+      DIAGNOSE_TIMEOUT_MS
+    )
+    try {
+      const res = await this.postChat(
+        config,
+        [{ role: 'user', content: prompt }],
+        false,
+        controller.signal
+      )
+      const payload = (await res.json()) as {
+        model?: unknown
+        choices?: { message?: { content?: unknown } }[]
+      }
+      const raw = payload.choices?.[0]?.message?.content
+      const answer = typeof raw === 'string' ? raw.trim().slice(0, MAX_PROBE_ANSWER) : ''
+      const served = typeof payload.model === 'string' ? payload.model.trim() : ''
+      return {
+        id,
+        ok: true,
+        servedModel: served || undefined,
+        reportedModel: extractReportedModel(answer),
+        answer: answer || undefined,
+        durationMs: Date.now() - started
+      }
+    } catch (err) {
+      return { id, ok: false, error: errorMessage(err), durationMs: Date.now() - started }
+    } finally {
+      clearTimeout(timer)
     }
   }
 

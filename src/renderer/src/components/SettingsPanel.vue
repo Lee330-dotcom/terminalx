@@ -9,10 +9,17 @@ import {
   Download,
   Files,
   MagicStick,
+  Refresh,
   Search,
   Setting
 } from '@element-plus/icons-vue'
-import { AppInfo, Settings } from '@shared/types'
+import {
+  AiDiagnoseConfidence,
+  AiDiagnoseResult,
+  AiDiagnoseVerdict,
+  AppInfo,
+  Settings
+} from '@shared/types'
 import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '../stores/settings'
 import { t, setLang, Lang } from '../i18n'
@@ -117,6 +124,14 @@ const aiModel = ref('')
 const aiKeyInput = ref('')
 const aiKeySet = ref(false)
 const aiTesting = ref(false)
+/** 模型名候选：来自服务端 /models 目录，支持模糊搜索与手动创建 */
+const aiModelOptions = ref<string[]>([])
+const aiModelsLoading = ref(false)
+const aiModelsError = ref('')
+/** 只有「测试连接」通过后才允许诊断，配置一改立即失效 */
+const aiTestPassed = ref(false)
+const aiDiagnosing = ref(false)
+const aiDiagnoseResult = ref<AiDiagnoseResult | null>(null)
 
 function syncLocalRefs(): void {
   const s = settings.value
@@ -235,14 +250,98 @@ async function testAi(): Promise<void> {
     }
     const result = await window.api.testAi()
     if (result.ok) {
+      aiTestPassed.value = true
       ElMessage.success(t('ai.testOk', { ms: String(result.durationMs ?? 0) }))
+      // 地址与密钥已验证可用，顺手拉一次模型目录供下拉框使用
+      if (aiModelOptions.value.length === 0) void loadModels(true)
     } else {
+      aiTestPassed.value = false
       ElMessage.error(t('ai.testFailed', { err: result.error ?? '' }))
     }
   } finally {
     aiTesting.value = false
   }
 }
+
+/** 拉取 /models 目录；silent 为 false 时给出成功/失败提示 */
+async function loadModels(silent: boolean): Promise<void> {
+  if (aiModelsLoading.value) return
+  aiModelsLoading.value = true
+  aiModelsError.value = ''
+  try {
+    const result = await window.api.listAiModels()
+    if (result.ok) {
+      aiModelOptions.value = result.models.map((m) => m.id)
+      if (!silent) ElMessage.success(t('ai.modelsLoaded', { n: aiModelOptions.value.length }))
+    } else {
+      aiModelsError.value = result.error ?? ''
+      if (!silent) ElMessage.error(t('ai.modelsFailed', { err: aiModelsError.value }))
+    }
+  } catch (err) {
+    aiModelsError.value = String(err)
+    if (!silent) ElMessage.error(t('ai.modelsFailed', { err: aiModelsError.value }))
+  } finally {
+    aiModelsLoading.value = false
+  }
+}
+
+async function diagnoseAi(): Promise<void> {
+  if (!aiTestPassed.value) return
+  aiDiagnosing.value = true
+  try {
+    const result = await window.api.diagnoseAi()
+    aiDiagnoseResult.value = result
+    if (!result.ok) {
+      ElMessage.error(t('ai.diagnoseFailed', { err: result.error ?? '' }))
+      return
+    }
+  } catch (err) {
+    ElMessage.error(t('ai.diagnoseFailed', { err: String(err) }))
+  } finally {
+    aiDiagnosing.value = false
+  }
+}
+
+function verdictType(v: AiDiagnoseVerdict | undefined): 'success' | 'warning' | 'danger' | 'info' {
+  if (v === 'match') return 'success'
+  if (v === 'partial') return 'warning'
+  if (v === 'mismatch') return 'danger'
+  return 'info'
+}
+
+function verdictLabel(v: AiDiagnoseVerdict | undefined): string {
+  if (v === 'match') return t('ai.verdictMatch')
+  if (v === 'partial') return t('ai.verdictPartial')
+  if (v === 'mismatch') return t('ai.verdictMismatch')
+  return t('ai.verdictUnknown')
+}
+
+function verdictSummary(v: AiDiagnoseVerdict | undefined): string {
+  if (v === 'match') return t('ai.summaryMatch')
+  if (v === 'partial') return t('ai.summaryPartial')
+  if (v === 'mismatch') return t('ai.summaryMismatch')
+  return t('ai.summaryUnknown')
+}
+
+function confidenceLabel(c: AiDiagnoseConfidence | undefined): string {
+  if (c === 'high') return t('ai.confidenceHigh')
+  if (c === 'medium') return t('ai.confidenceMedium')
+  return t('ai.confidenceLow')
+}
+
+function probeLabel(id: string): string {
+  return id === 'identity-en' ? t('ai.diagnoseProbeIdentityEn') : t('ai.diagnoseProbeIdentityZh')
+}
+
+// 地址、模型或密钥一旦变动，之前的测试结论与诊断结果就作废
+watch([aiBaseUrl, aiModel, aiKeyInput], () => {
+  aiTestPassed.value = false
+  aiDiagnoseResult.value = null
+})
+watch(aiKeySet, () => {
+  aiTestPassed.value = false
+  aiDiagnoseResult.value = null
+})
 
 async function copyUrl(): Promise<void> {
   await navigator.clipboard.writeText(`http://127.0.0.1:${mcpPort.value}/mcp`)
@@ -306,7 +405,14 @@ async function load(): Promise<void> {
   syncLocalRefs()
   await syncAiState()
   appInfo.value = await window.api.getAppInfo()
+  if (aiBaseUrl.value.trim() && aiKeySet.value) void loadModels(true)
 }
+
+watch(activeSection, (section) => {
+  if (section === 'ai' && aiModelOptions.value.length === 0 && aiKeySet.value) {
+    void loadModels(true)
+  }
+})
 
 watch(
   () => props.visible,
@@ -668,12 +774,33 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                   <div class="setting-label">{{ t('ai.model') }}</div>
                   <div class="setting-desc">{{ t('ai.modelDesc') }}</div>
                 </div>
-                <el-input
-                  v-model="aiModel"
-                  style="width: 300px"
-                  placeholder="gpt-4o-mini"
-                  @change="saveAi"
-                />
+                <div class="model-picker">
+                  <el-select
+                    v-model="aiModel"
+                    filterable
+                    allow-create
+                    clearable
+                    default-first-option
+                    :reserve-keyword="false"
+                    :loading="aiModelsLoading"
+                    :placeholder="t('ai.modelPlaceholder')"
+                    style="width: 262px"
+                    @change="saveAi"
+                  >
+                    <el-option v-for="m in aiModelOptions" :key="m" :label="m" :value="m" />
+                  </el-select>
+                  <el-button
+                    size="small"
+                    :loading="aiModelsLoading"
+                    :title="t('ai.refreshModels')"
+                    @click="loadModels(false)"
+                  >
+                    <el-icon><Refresh /></el-icon>
+                  </el-button>
+                </div>
+              </div>
+              <div v-if="aiModelsError" class="models-error">
+                {{ t('ai.modelsFailed', { err: aiModelsError }) }}
               </div>
             </div>
 
@@ -723,10 +850,89 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                   <div class="setting-label">{{ t('ai.test') }}</div>
                   <div class="setting-desc">{{ t('ai.testDesc') }}</div>
                 </div>
-                <el-button size="small" :loading="aiTesting" @click="testAi">
-                  {{ t('ai.testBtn') }}
-                </el-button>
+                <div class="test-actions">
+                  <el-button size="small" :loading="aiTesting" @click="testAi">
+                    {{ t('ai.testBtn') }}
+                  </el-button>
+                  <el-button
+                    size="small"
+                    type="primary"
+                    plain
+                    :loading="aiDiagnosing"
+                    :disabled="!aiTestPassed"
+                    :title="aiTestPassed ? t('ai.diagnoseDesc') : t('ai.diagnoseLocked')"
+                    @click="diagnoseAi"
+                  >
+                    {{ t('ai.diagnoseBtn') }}
+                  </el-button>
+                </div>
               </div>
+              <div class="diagnose-hint" :class="{ passed: aiTestPassed }">
+                {{ aiTestPassed ? t('ai.diagnoseDesc') : t('ai.diagnoseLocked') }}
+              </div>
+            </div>
+
+            <!-- 模型诊断结果 -->
+            <div v-if="aiDiagnoseResult?.ok" class="settings-card">
+              <div class="diagnose-head">
+                <div class="card-title">{{ t('ai.diagnoseTitle') }}</div>
+                <el-tag :type="verdictType(aiDiagnoseResult.verdict)" effect="dark" size="small">
+                  {{ verdictLabel(aiDiagnoseResult.verdict) }}
+                </el-tag>
+              </div>
+              <div class="diagnose-summary">{{ verdictSummary(aiDiagnoseResult.verdict) }}</div>
+              <div class="diagnose-grid">
+                <div class="diagnose-cell">
+                  <span class="diagnose-key">{{ t('ai.diagnoseConfigModel') }}</span>
+                  <span class="diagnose-val">{{ aiDiagnoseResult.configuredModel }}</span>
+                </div>
+                <div class="diagnose-cell">
+                  <span class="diagnose-key">{{ t('ai.diagnoseServedModel') }}</span>
+                  <span class="diagnose-val">{{ aiDiagnoseResult.servedModel || '—' }}</span>
+                </div>
+                <div class="diagnose-cell">
+                  <span class="diagnose-key">{{ t('ai.diagnoseReportedModel') }}</span>
+                  <span class="diagnose-val">{{ aiDiagnoseResult.reportedModel || '—' }}</span>
+                </div>
+                <div class="diagnose-cell">
+                  <span class="diagnose-key">{{ t('ai.diagnoseConfidenceLabel') }}</span>
+                  <span class="diagnose-val">
+                    {{ confidenceLabel(aiDiagnoseResult.confidence) }}
+                  </span>
+                </div>
+              </div>
+              <div class="diagnose-line">
+                <span class="diagnose-key">{{ t('ai.diagnoseCatalog') }}：</span>
+                <template v-if="!aiDiagnoseResult.catalogChecked">
+                  {{ t('ai.diagnoseCatalogSkipped') }}
+                </template>
+                <template v-else-if="aiDiagnoseResult.catalogMatch">
+                  {{ t('ai.diagnoseCatalogIn', { n: aiDiagnoseResult.catalogSize }) }}
+                </template>
+                <template v-else>
+                  {{ t('ai.diagnoseCatalogOut', { n: aiDiagnoseResult.catalogSize }) }}
+                </template>
+              </div>
+              <div v-if="aiDiagnoseResult.catalogSimilar.length" class="diagnose-line">
+                {{ t('ai.diagnoseSimilar', { list: aiDiagnoseResult.catalogSimilar.join('、') }) }}
+              </div>
+              <div class="diagnose-probes">
+                <div class="diagnose-line strong">{{ t('ai.diagnoseProbe') }}</div>
+                <div v-for="p in aiDiagnoseResult.probes" :key="p.id" class="probe-row">
+                  <div class="probe-head">
+                    <span class="probe-name">{{ probeLabel(p.id) }}</span>
+                    <span class="probe-meta">
+                      <template v-if="p.ok">
+                        {{ p.servedModel || '—' }} · {{ p.reportedModel || '—' }} ·
+                        {{ p.durationMs }}ms
+                      </template>
+                      <template v-else> {{ t('ai.diagnoseProbeFailed') }}：{{ p.error }} </template>
+                    </span>
+                  </div>
+                  <div v-if="p.answer" class="probe-answer">{{ p.answer }}</div>
+                </div>
+              </div>
+              <div class="diagnose-note">{{ t('ai.diagnoseNote') }}</div>
             </div>
 
             <div class="settings-card">
@@ -1164,5 +1370,131 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   color: var(--tx-text-2);
   line-height: 1.9;
   list-style: disc;
+}
+
+/* ---- AI 模型诊断 ---- */
+.model-picker,
+.test-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.model-picker :deep(.el-select__wrapper) {
+  min-height: 32px;
+}
+.models-error {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-color-warning);
+  word-break: break-all;
+}
+.diagnose-hint {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--tx-border);
+  font-size: 12px;
+  color: var(--tx-text-3);
+}
+.diagnose-hint.passed {
+  color: var(--tx-green-hover);
+}
+.diagnose-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.diagnose-head .card-title {
+  margin-bottom: 0;
+}
+.diagnose-summary {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--tx-text-2);
+}
+.diagnose-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 16px;
+  margin: 14px 0 10px;
+}
+.diagnose-cell {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--tx-border);
+  border-radius: 8px;
+  background: var(--tx-hover);
+  overflow: hidden;
+}
+.diagnose-key {
+  font-size: 12px;
+  color: var(--tx-text-3);
+  flex-shrink: 0;
+}
+.diagnose-val {
+  font-size: 13px;
+  color: var(--tx-text);
+  word-break: break-all;
+}
+.diagnose-line {
+  font-size: 12px;
+  color: var(--tx-text-2);
+  line-height: 1.8;
+  word-break: break-all;
+}
+.diagnose-line.strong {
+  color: var(--tx-text);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.diagnose-probes {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--tx-border);
+}
+.probe-row {
+  padding: 8px 0;
+}
+.probe-row + .probe-row {
+  border-top: 1px dashed var(--tx-border);
+}
+.probe-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.probe-name {
+  font-size: 12px;
+  color: var(--tx-text);
+}
+.probe-meta {
+  font-size: 12px;
+  color: var(--tx-text-3);
+  word-break: break-all;
+  text-align: right;
+}
+.probe-answer {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--tx-hover);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--tx-text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.diagnose-note {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--tx-border);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--tx-text-3);
 }
 </style>
