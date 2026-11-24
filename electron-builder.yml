@@ -1,5 +1,6 @@
 appId: com.liyuan.terminalx
 productName: terminalX
+afterPack: ./build/afterPack.js
 directories:
   buildResources: build
 files:
@@ -23,4 +24,11 @@ mac:
     - dmg
 dmg:
   artifactName: ${name}-${version}.${ext}
+nsis:
+  # 向导式安装：先选目录再安装，而不是一键静默装到默认路径
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  perMachine: false
 npmRebuild: false
