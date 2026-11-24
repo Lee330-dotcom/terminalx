@@ -9,6 +9,8 @@ interface ManagedClient {
 
 const IDLE_DESTROY_MS = 60_000
 const EXEC_TIMEOUT_MS = 120_000
+/** 单路输出最多保留的字节数，避免大文件/刷屏命令撑爆主进程内存 */
+const MAX_EXEC_OUTPUT_BYTES = 1024 * 1024
 
 /** 将 ssh2 连接错误翻译为用户可读的分类消息。 */
 export function describeSshError(err: Error & { level?: string; code?: string }): string {
@@ -107,6 +109,21 @@ export class ConnectionManager {
     }
     const config = await this.buildConfig(connectionId)
     const client = await this.connect(config)
+    // 并发 acquire 可能各自完成建连：后完成的复用先入池的连接，
+    // 销毁自己的多余 client，避免池被覆盖、旧连接泄漏
+    const raced = this.clients.get(connectionId)
+    if (raced) {
+      client.on('error', () => {
+        /* end() 期间的错误无需处理 */
+      })
+      client.end()
+      raced.refCount++
+      if (raced.destroyTimer) {
+        clearTimeout(raced.destroyTimer)
+        raced.destroyTimer = undefined
+      }
+      return this.handleFor(connectionId, raced)
+    }
     const managed: ManagedClient = { client, refCount: 1 }
     // 池化连接常驻 error 监听：keepalive 超时（client-timeout）等错误
     // 没有监听器会变成未处理异常导致主进程崩溃
@@ -160,13 +177,34 @@ export class ConnectionManager {
           }
           const out: Buffer[] = []
           const errOut: Buffer[] = []
+          let outBytes = 0
+          let errBytes = 0
+          let truncated = false
           let exitCode: number | null = null
+          const collect = (buffers: Buffer[], chunk: Buffer, used: number): number => {
+            const remain = MAX_EXEC_OUTPUT_BYTES - used
+            if (remain <= 0) {
+              truncated = true
+              return used
+            }
+            if (chunk.length > remain) {
+              buffers.push(chunk.subarray(0, remain))
+              truncated = true
+              return MAX_EXEC_OUTPUT_BYTES
+            }
+            buffers.push(chunk)
+            return used + chunk.length
+          }
           const timer = setTimeout(() => {
             stream.close()
             reject(new Error(`命令执行超时（${timeoutMs}ms）`))
           }, timeoutMs)
-          stream.on('data', (d: Buffer) => out.push(d))
-          stream.stderr.on('data', (d: Buffer) => errOut.push(d))
+          stream.on('data', (d: Buffer) => {
+            outBytes = collect(out, d, outBytes)
+          })
+          stream.stderr.on('data', (d: Buffer) => {
+            errBytes = collect(errOut, d, errBytes)
+          })
           stream.on('close', (code: number | null) => {
             clearTimeout(timer)
             exitCode = code
@@ -174,7 +212,7 @@ export class ConnectionManager {
               stdout: Buffer.concat(out).toString('utf8'),
               stderr: Buffer.concat(errOut).toString('utf8'),
               exitCode,
-              truncated: false,
+              truncated,
               durationMs: Date.now() - started
             })
           })

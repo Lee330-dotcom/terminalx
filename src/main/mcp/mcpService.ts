@@ -11,7 +11,7 @@ import type { AppContext } from '../appContext'
 const APP_VERSION = ((): string => {
   try {
     return (
-      JSON.parse(readFileSync(join(__dirname, '../../../package.json'), 'utf8')) as {
+      JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf8')) as {
         version: string
       }
     ).version

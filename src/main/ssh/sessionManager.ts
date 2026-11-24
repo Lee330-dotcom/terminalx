@@ -5,12 +5,12 @@ import { SessionInfo, SessionStatus } from '@shared/types'
 import { ClientHandle, ConnectionManager, describeSshError, openShell } from './connectionManager'
 
 const MAX_SCROLLBACK_LINES = 10_000
+/** 单行未结束时的最大保留长度，避免 cat 大文件/二进制输出撑爆内存 */
+const MAX_LINE_CARRY = 4096
 const FLUSH_INTERVAL_MS = 16
 
 /** shell 输出静默多久视为提示符就绪，此时再写入自动 cd 命令 */
 const AUTO_CD_IDLE_MS = 400
-/** 兜底：即使一直没输出，也在此延迟后写入 */
-const AUTO_CD_FALLBACK_MS = 4_000
 
 interface AutoCdRule {
   /** 连接名包含该关键字（不区分大小写）时生效 */
@@ -37,13 +37,21 @@ interface TerminalSession {
   stream: ClientChannel | null
   handle: ClientHandle | null
   scrollback: string[]
+  /** 上一条尚未换行的行尾：跨 chunk 拼接，避免一行被拆成多条记录 */
+  lineCarry: string
   decoder: StringDecoder
   /** 待推送的字节缓冲（16ms 合并窗口） */
   pending: Buffer[]
   flushTimer?: NodeJS.Timeout
   closedByUser: boolean
+  /** 每次附加/重连递增；异步建连返回后据此判断本次附加是否已过期 */
+  attachId: number
+  /** 最近一次窗口尺寸：连接建立前即可记录，重连时用于新 shell，避免回落到 80x24 */
+  size?: { cols: number; rows: number }
+  /** 用户是否已经开始输入：一旦输入，取消尚未执行的自动 cd，避免与手输交错 */
+  userInput?: boolean
   /** 尚未发送的自动 cd（等待提示符就绪） */
-  autoCd?: { directory: string; idleTimer?: NodeJS.Timeout; fallbackTimer?: NodeJS.Timeout }
+  autoCd?: { directory: string; idleTimer?: NodeJS.Timeout }
 }
 
 export class SessionManager {
@@ -64,9 +72,12 @@ export class SessionManager {
     const chunk = Buffer.concat(session.pending)
     session.pending = []
     this.sink.emitData(session.id, new Uint8Array(chunk))
-    // 滚动缓冲：解码后按行拆分（与终端显示共用同一字节流）
-    const text = session.decoder.write(chunk)
-    const lines = text.split('\n')
+    // 滚动缓冲：解码后按行拆分（与终端显示共用同一字节流）。
+    // 没有换行符的尾段留到下次拼接，避免 cat/tail 的同一行被拆成多条；
+    // 超长行只保留尾部，防止无换行的大文件输出撑爆内存。
+    session.lineCarry += session.decoder.write(chunk)
+    const lines = session.lineCarry.split('\n')
+    session.lineCarry = (lines.pop() ?? '').slice(-MAX_LINE_CARRY)
     session.scrollback.push(...lines)
     if (session.scrollback.length > MAX_SCROLLBACK_LINES) {
       session.scrollback = session.scrollback.slice(-MAX_SCROLLBACK_LINES)
@@ -92,9 +103,11 @@ export class SessionManager {
       stream: null,
       handle: null,
       scrollback: [],
+      lineCarry: '',
       decoder: new StringDecoder('utf8'),
       pending: [],
-      closedByUser: false
+      closedByUser: false,
+      attachId: 0
     }
     this.sessions.set(session.id, session)
     this.setStatus(session, 'connecting')
@@ -103,19 +116,26 @@ export class SessionManager {
   }
 
   private async attachShell(session: TerminalSession): Promise<void> {
+    const attachId = ++session.attachId
     let handle: ClientHandle | null = null
+    /** 本次附加是否仍然是会话当前的有效附加 */
+    const stale = (): boolean => session.attachId !== attachId || !this.sessions.has(session.id)
     try {
       handle = await this.connections.acquire(session.connectionId)
-      if (!this.sessions.has(session.id)) {
-        // 会话在连接建立期间被用户关闭
-        handle.drop()
+      if (stale()) {
+        // 会话已关闭，或期间又发起了重连：放弃本次连接，避免覆盖新通道。
+        // 用 release 而非 drop：池中 client 可能正被后发起的那次附加复用。
+        handle.release()
         return
       }
-      const stream = await openShell(handle.client, 80, 24)
-      if (!this.sessions.has(session.id)) {
-        // 会话在通道打开期间被用户关闭
+      // 若渲染层在连接建立前已上报过窗口尺寸，直接用真实尺寸打开新 shell；
+      // 否则先按 80x24 打开，随后的 resize 会立即通过 setWindow 补上
+      const { cols, rows } = session.size ?? { cols: 80, rows: 24 }
+      const stream = await openShell(handle.client, cols, rows)
+      if (stale()) {
         stream.close()
-        handle.drop()
+        if (this.sessions.has(session.id)) handle.release()
+        else handle.drop()
         return
       }
       session.handle = handle
@@ -123,17 +143,19 @@ export class SessionManager {
       this.setStatus(session, 'connected')
       void this.armAutoCd(session, stream)
       stream.on('data', (d: Buffer) => {
+        // 重连后旧通道可能还会吐出迟到的数据，不能混进新终端的缓冲
+        if (session.stream !== stream) return
         session.pending.push(d)
         this.scheduleFlush(session)
         this.touchAutoCd(session)
       })
       stream.on('close', () => {
         this.flush(session)
-        this.clearAutoCd(session)
         handle?.release()
         // 迟到的旧通道 close（重连后旧 stream 才关闭）：
         // session.stream 已被新通道替换，此时不得清理新通道、也不得改状态
         if (session.stream !== stream) return
+        this.clearAutoCd(session)
         session.stream = null
         session.handle = null
         if (!session.closedByUser) {
@@ -148,6 +170,8 @@ export class SessionManager {
       })
     } catch (err) {
       handle?.release()
+      // 过期的附加失败不得改写已被重连接管的状态
+      if (stale()) return
       session.stream = null
       session.handle = null
       this.setStatus(session, 'error', describeSshError(err as Error))
@@ -169,11 +193,11 @@ export class SessionManager {
       return
     }
     const rule = AUTO_CD_RULES.find((r) => name.includes(r.nameIncludes))
-    // 查询期间会话可能已关闭，或通道已被重连替换
-    if (!rule || !this.sessions.has(session.id) || session.stream !== stream) return
+    // 查询期间会话可能已关闭、通道已被重连替换，或用户已经开始输入
+    if (!rule || !this.sessions.has(session.id) || session.stream !== stream || session.userInput)
+      return
     session.autoCd = { directory: rule.directory }
     session.autoCd.idleTimer = setTimeout(() => this.runAutoCd(session), AUTO_CD_IDLE_MS)
-    session.autoCd.fallbackTimer = setTimeout(() => this.runAutoCd(session), AUTO_CD_FALLBACK_MS)
   }
 
   private touchAutoCd(session: TerminalSession): void {
@@ -187,7 +211,7 @@ export class SessionManager {
     const autoCd = session.autoCd
     if (!autoCd) return
     this.clearAutoCd(session)
-    if (!this.sessions.has(session.id) || !session.stream) return
+    if (!this.sessions.has(session.id) || !session.stream || session.userInput) return
     session.stream.write(`cd ${autoCd.directory}\r`)
   }
 
@@ -196,17 +220,23 @@ export class SessionManager {
     if (!autoCd) return
     session.autoCd = undefined
     clearTimeout(autoCd.idleTimer)
-    clearTimeout(autoCd.fallbackTimer)
   }
 
   input(sessionId: string, data: Uint8Array): void {
     const session = this.sessions.get(sessionId)
-    if (session?.stream) session.stream.write(Buffer.from(data))
+    if (!session) return
+    // 用户一旦开始手输，就不再自动注入 cd，避免命令与输入交错
+    session.userInput = true
+    this.clearAutoCd(session)
+    if (session.stream) session.stream.write(Buffer.from(data))
   }
 
   resize(sessionId: string, cols: number, rows: number): void {
     const session = this.sessions.get(sessionId)
-    if (session?.stream) session.stream.setWindow(rows, cols, 0, 0)
+    if (!session) return
+    // 连接建立前也记住尺寸，供 openShell / 重连使用
+    session.size = { cols, rows }
+    if (session.stream) session.stream.setWindow(rows, cols, 0, 0)
   }
 
   async close(sessionId: string): Promise<void> {
@@ -227,7 +257,13 @@ export class SessionManager {
   async reconnect(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId)
     if (!session) throw new Error(`session not found: ${sessionId}`)
+    // 让仍在建立中的旧附加立即过期，避免其晚到的连接覆盖本次重连
+    session.attachId++
     this.clearAutoCd(session)
+    // 先推完旧通道的残余输出；解码器可能停在半个多字节字符上，重连后重置
+    this.flush(session)
+    session.decoder = new StringDecoder('utf8')
+    session.lineCarry = ''
     if (session.stream) {
       session.closedByUser = true
       session.stream.end()
@@ -255,9 +291,11 @@ export class SessionManager {
   readLines(sessionId: string, n: number): { lines: string[]; totalLines: number } {
     const session = this.sessions.get(sessionId)
     if (!session) throw new Error(`session not found: ${sessionId}`)
+    // 未换行的行尾（通常是当前提示符）也要返回，否则 AI 分析看不到最新状态
+    const all = session.lineCarry ? [...session.scrollback, session.lineCarry] : session.scrollback
     return {
-      lines: session.scrollback.slice(-n),
-      totalLines: session.scrollback.length
+      lines: all.slice(-n),
+      totalLines: all.length
     }
   }
 

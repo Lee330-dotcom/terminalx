@@ -7,6 +7,10 @@ export interface TestSshServer {
   lastExec: { command: string; stdout: string }[]
   /** 所有 shell 通道收到的原始输入（含回车），用于验证是否发生过回车执行 */
   shellInput(): string
+  /** 每次打开 shell 时申请的 PTY 尺寸 */
+  ptyRequests: { cols: number; rows: number }[]
+  /** 运行期 PTY 窗口尺寸变化 */
+  windowChanges: { cols: number; rows: number }[]
 }
 
 /**
@@ -16,6 +20,8 @@ export interface TestSshServer {
 export function startTestSshServer(): Promise<TestSshServer> {
   return new Promise((resolvePromise, reject) => {
     const execLog: { command: string; stdout: string }[] = []
+    const ptyRequests: { cols: number; rows: number }[] = []
+    const windowChanges: { cols: number; rows: number }[] = []
     let shellInput = ''
     const { privateKey } = generateKeyPairSync('rsa', {
       modulusLength: 2048,
@@ -37,7 +43,14 @@ export function startTestSshServer(): Promise<TestSshServer> {
       client.on('ready', () => {
         client.on('session', (accept) => {
           const session = accept()
-          session.on('pty', (acceptPty) => acceptPty?.())
+          session.on('pty', (acceptPty, _rejectPty, info) => {
+            ptyRequests.push({ cols: info.cols, rows: info.rows })
+            acceptPty?.()
+          })
+          session.on('window-change', (acceptChange, _rejectChange, info) => {
+            windowChanges.push({ cols: info.cols, rows: info.rows })
+            acceptChange?.()
+          })
           session.on('shell', (acceptShell) => {
             const stream = acceptShell()
             stream.write('welcome to test server\r\n$ ')
@@ -58,7 +71,12 @@ export function startTestSshServer(): Promise<TestSshServer> {
             const stream = acceptExec()
             const command = String(info.command)
             execLog.push({ command, stdout: `exec:${command}` })
-            stream.write(`exec:${command}`)
+            if (command === 'big') {
+              // 2MB 输出，用于验证客户端侧的输出截断
+              for (let i = 0; i < 32; i++) stream.write(Buffer.alloc(64 * 1024, 120))
+            } else {
+              stream.write(`exec:${command}`)
+            }
             stream.exit(0)
             stream.end()
           })
@@ -76,6 +94,8 @@ export function startTestSshServer(): Promise<TestSshServer> {
         port: address.port,
         lastExec: execLog,
         shellInput: () => shellInput,
+        ptyRequests,
+        windowChanges,
         close: () => server.close()
       })
     })

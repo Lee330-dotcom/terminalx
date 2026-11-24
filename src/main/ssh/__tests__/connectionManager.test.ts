@@ -61,6 +61,13 @@ describe('ConnectionManager 集成', () => {
     expect(result.durationMs).toBeGreaterThanOrEqual(0)
   })
 
+  it('exec 输出超过上限时截断并标记 truncated', async () => {
+    const manager = makeManager('test-pass')
+    const result = await manager.exec('conn-1', 'big')
+    expect(result.truncated).toBe(true)
+    expect(result.stdout.length).toBe(1024 * 1024)
+  })
+
   it('密码错误时抛认证失败', async () => {
     const manager = makeManager('wrong-pass')
     await expect(manager.exec('conn-1', 'ls')).rejects.toThrow()
@@ -87,6 +94,14 @@ describe('ConnectionManager 集成', () => {
     expect(manager.isOnline('conn-1')).toBe(true)
     h2.release()
     expect(manager.isOnline('conn-1')).toBe(false)
+  })
+
+  it('并发 acquire 只建立一条底层连接', async () => {
+    const manager = makeManager('test-pass')
+    const [h1, h2] = await Promise.all([manager.acquire('conn-1'), manager.acquire('conn-1')])
+    expect(h1.client).toBe(h2.client)
+    h1.release()
+    h2.release()
   })
 
   it('空闲超时后底层连接销毁', async () => {
@@ -129,6 +144,16 @@ describe('SessionManager 自动切换目录', () => {
   it('连接名不含 helink 时不写入任何命令', async () => {
     const { dataText, manager } = collect(async () => ({ name: 'other-server' }))
     const { sessionId } = await manager.open('conn-1')
+    await new Promise((r) => setTimeout(r, 900))
+    expect(dataText()).not.toContain('cd ')
+    await manager.close(sessionId)
+  })
+
+  it('用户先输入时取消待执行的自动 cd', async () => {
+    const { dataText, manager } = collect(async () => ({ name: 'helink-pro 生产' }))
+    const { sessionId } = await manager.open('conn-1')
+    // 连接尚未就绪时用户已开始输入：不得再向远端注入 cd
+    manager.input(sessionId, new TextEncoder().encode('x'))
     await new Promise((r) => setTimeout(r, 900))
     expect(dataText()).not.toContain('cd ')
     await manager.close(sessionId)
@@ -195,5 +220,44 @@ describe('SessionManager 集成', () => {
     expect(manager.has(sessionId)).toBe(true)
     await manager.close(sessionId)
     expect(manager.has(sessionId)).toBe(false)
+  })
+
+  it('重连后用最近一次窗口尺寸打开新 shell', async () => {
+    const { manager } = collect()
+    const { sessionId } = await manager.open('conn-1')
+    await new Promise((r) => setTimeout(r, 300))
+    manager.resize(sessionId, 123, 45)
+    await new Promise((r) => setTimeout(r, 100))
+    const before = server.ptyRequests.length
+    await manager.reconnect(sessionId)
+    await new Promise((r) => setTimeout(r, 300))
+    expect(server.ptyRequests.length).toBe(before + 1)
+    expect(server.ptyRequests[before]).toEqual({ cols: 123, rows: 45 })
+    await manager.close(sessionId)
+  })
+
+  it('并发重连只保留最后一次，旧附加不会覆盖新通道', async () => {
+    const { manager } = collect()
+    const { sessionId } = await manager.open('conn-1')
+    await new Promise((r) => setTimeout(r, 300))
+    const before = server.ptyRequests.length
+    await Promise.all([manager.reconnect(sessionId), manager.reconnect(sessionId)])
+    await new Promise((r) => setTimeout(r, 300))
+    expect(server.ptyRequests.length).toBe(before + 1)
+    expect(manager.list()[0]?.status).toBe('connected')
+    await manager.close(sessionId)
+  })
+
+  it('滚动缓冲合并未换行的跨 chunk 行', async () => {
+    const { manager } = collect()
+    const { sessionId } = await manager.open('conn-1')
+    await new Promise((r) => setTimeout(r, 300))
+    manager.input(sessionId, new TextEncoder().encode('abc'))
+    await new Promise((r) => setTimeout(r, 120))
+    manager.input(sessionId, new TextEncoder().encode('def'))
+    await new Promise((r) => setTimeout(r, 200))
+    const last = manager.readLines(sessionId, 1)
+    expect(last.lines).toEqual(['$ abcdef'])
+    await manager.close(sessionId)
   })
 })

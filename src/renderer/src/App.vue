@@ -270,8 +270,14 @@ watch(
 
 watch(
   () => sessionStore.activeTab?.status,
-  (status) => {
-    if (status !== 'connected') resetTerminalSearchResult()
+  async (status) => {
+    if (status !== 'connected') {
+      resetTerminalSearchResult()
+      return
+    }
+    // 重连或终端重新挂载完成后，SearchAddon 才可用；等一帧再按当前关键字重新搜索
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)))
+    if (terminalSearchQuery.value.trim()) runTerminalSearch(true)
   }
 )
 
@@ -585,8 +591,12 @@ onUnmounted(() => {
                     <TerminalView
                       v-else
                       :session-id="tab.sessionId"
+                      :interactive="tab.status === 'connected'"
                       @explain="(text: string) => explainSelection(tab, text)"
                     />
+                    <div v-if="tab.status === 'connecting'" class="terminal-connecting">
+                      正在连接…
+                    </div>
                   </div>
                 </template>
               </div>
@@ -1116,7 +1126,20 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  position: relative;
   background: #14161f;
+}
+.terminal-connecting {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(20, 22, 31, 0.55);
+  color: var(--tx-text-3);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  z-index: 5;
 }
 .tab-panel :deep(.terminal-container) {
   flex: 1 1 auto;

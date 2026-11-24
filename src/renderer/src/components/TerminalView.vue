@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
@@ -15,7 +15,7 @@ const SEARCH_DECORATIONS = {
   activeMatchColorOverviewRuler: '#fbbf24'
 }
 
-const props = defineProps<{ sessionId: string }>()
+const props = defineProps<{ sessionId: string; interactive?: boolean }>()
 const emit = defineEmits<{ explain: [text: string] }>()
 
 const commandNames = [
@@ -187,6 +187,9 @@ onMounted(() => {
   updateHintPosition()
 
   term.onData((data) => {
+    // 连接/重连过程中远端 stream 可能尚未就绪，输入会被丢弃；
+    // 此时直接忽略按键，避免用户以为命令已经输入
+    if (props.interactive === false) return
     if (data === '\u001b[A' && commandHints.value.length > 0) {
       selectedHintIndex.value =
         (selectedHintIndex.value - 1 + commandHints.value.length) % commandHints.value.length
@@ -233,6 +236,16 @@ onMounted(() => {
   })
   resizeObserver.observe(container.value!)
 })
+
+watch(
+  () => props.interactive,
+  (interactive) => {
+    if (interactive === false) {
+      inputBuffer.value = ''
+      selectedHintIndex.value = 0
+    }
+  }
+)
 
 function onMouseUp(e: MouseEvent): void {
   lastMouse = { x: e.clientX, y: e.clientY }
