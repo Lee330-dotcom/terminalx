@@ -304,6 +304,55 @@ export interface TransferResult {
   bytesTransferred: number
 }
 
+// ---- 导入 ----
+
+export type ImportKind = 'bastion' | 'template'
+
+export interface ImportPreviewRow {
+  name: string
+  host: string
+  port: number
+  username: string
+  remark: string
+}
+
+export interface ImportPreview {
+  ok: boolean
+  error?: string
+  kind: ImportKind
+  /** 通过校验且不与已有连接重复的行 */
+  rows: ImportPreviewRow[]
+  /** 文件里的数据行总数（不含表头与空行） */
+  total: number
+  /** 与已有连接重复、将被跳过的行数 */
+  duplicates: number
+  /** 字段缺失或非法、无法导入的行数 */
+  invalid: number
+  /** 预览用的前几条连接名 */
+  samples: string[]
+}
+
+export interface ImportResult {
+  created: number
+  skippedDuplicates: number
+  skippedErrors: number
+}
+
+export interface ImportPreviewRequest {
+  kind: ImportKind
+  filePath: string
+}
+
+export interface ImportApplyRequest {
+  kind: ImportKind
+  filePath: string
+  /** 堡垒机模式：所有连接共用此密码 */
+  password?: string
+  /** 模板模式：按 host+port+username 匹配各行密码（可选，缺省走空密码） */
+  passwordMap?: Record<string, string>
+  groupId?: string | null
+}
+
 // ---- IPC 通道 ----
 
 export const IpcChannels = {
@@ -353,6 +402,8 @@ export const IpcChannels = {
   aiChatApprove: 'ai:chat-approve',
   aiChatCancel: 'ai:chat-cancel',
   aiChatReset: 'ai:chat-reset',
+  importPreview: 'import:preview',
+  importApply: 'import:apply',
   // 主进程 -> 渲染进程事件
   evAiChunk: 'ev:ai:chunk',
   evAiDone: 'ev:ai:done',
@@ -450,4 +501,6 @@ export interface RendererApi {
   getPathForFile(file: unknown): string
   openFileDialog(): Promise<string | null>
   openDirectoryDialog(): Promise<string | null>
+  importPreview(request: ImportPreviewRequest): Promise<ImportPreview>
+  importApply(request: ImportApplyRequest): Promise<ImportResult>
 }

@@ -7,6 +7,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod'
 import { ExecCommandResult } from '@shared/types'
 import type { AppContext } from '../appContext'
+import { evaluateCommand } from '../ai/commandPolicy'
 
 const APP_VERSION = ((): string => {
   try {
@@ -104,6 +105,42 @@ function registerTools(mcp: McpServer, ctx: AppContext, disabled: ReadonlySet<st
       },
       async (args): Promise<{ content: { type: 'text'; text: string }[] }> => {
         try {
+          // 命令策略检查：防止越界执行
+          const decision = evaluateCommand(args.command)
+          if (decision.verdict === 'reject') {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    error: `命令被拒绝：${decision.reason}`,
+                    stdout: '',
+                    stderr: '',
+                    exit_code: null,
+                    truncated: false,
+                    duration_ms: 0
+                  })
+                }
+              ]
+            }
+          }
+          if (decision.verdict === 'confirm') {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    error: `命令需要人工确认：${decision.reason}（MCP 自动执行仅允许只读白名单命令）`,
+                    stdout: '',
+                    stderr: '',
+                    exit_code: null,
+                    truncated: false,
+                    duration_ms: 0
+                  })
+                }
+              ]
+            }
+          }
           const result: ExecCommandResult = await ctx.ssh.exec(
             args.connection_id,
             args.command,

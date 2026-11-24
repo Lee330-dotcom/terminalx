@@ -485,7 +485,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                     save({
                       themeColor: p.themeColor,
                       backgroundColor: p.backgroundColor,
-                      navColor: p.navColor
+                      navColor: p.navColor,
+                      followSystemTheme: false
                     })
                   "
                 >
@@ -647,7 +648,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
               <div class="setting-row">
                 <div>
                   <div class="setting-label">
-                    terminalX {{ appInfo ? `v${appInfo.version}` : '…' }}
+                    terminal<span class="brand-x">X</span> {{ appInfo ? `v${appInfo.version}` : '…' }}
                   </div>
                   <div class="setting-desc">{{ t('update.channel') }}</div>
                 </div>
@@ -1184,6 +1185,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 .setting-label {
   font-size: 13px;
   color: var(--tx-text);
+}
+.brand-x {
+  font-weight: 800;
 }
 .setting-desc {
   font-size: 12px;

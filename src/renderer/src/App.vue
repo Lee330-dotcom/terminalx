@@ -14,7 +14,8 @@ import {
   Plus,
   Refresh,
   Search,
-  Setting
+  Setting,
+  Upload
 } from '@element-plus/icons-vue'
 import ConnectionTree from './components/ConnectionTree.vue'
 import ConnectionTable from './components/ConnectionTable.vue'
@@ -24,6 +25,7 @@ import TerminalView from './components/TerminalView.vue'
 import SftpPanel from './components/SftpPanel.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import AiPanel from './components/AiPanel.vue'
+import ImportDialog from './components/ImportDialog.vue'
 import { useSessionStore, SessionTab } from './stores/sessions'
 import { useAiStore } from './stores/ai'
 import { useAiChatStore } from './stores/aiChat'
@@ -49,6 +51,7 @@ const formVisible = ref(false)
 const editingId = ref('')
 const cloneFromId = ref('')
 const settingsVisible = ref(false)
+const importVisible = ref(false)
 const epLocale = computed(() => (currentLang() === 'zh-CN' ? zhCn : en))
 const sftpVisible = ref(true)
 const search = ref('')
@@ -327,9 +330,9 @@ onUnmounted(() => {
       <!-- macOS 风格标题栏 -->
       <header class="title-bar">
         <div class="title-bar-left">
-          <div class="brand" aria-label="TerminalX">
+          <div class="brand" aria-label="terminalX">
             <span class="brand-mark">›_</span>
-            <span class="brand-name">terminal<span>x</span></span>
+            <span class="brand-name">terminal<span class="brand-x">X</span></span>
           </div>
           <div class="view-switcher">
             <button
@@ -369,6 +372,10 @@ onUnmounted(() => {
           </el-button>
           <el-button text circle size="small" @click="appStore.refresh()">
             <el-icon><Refresh /></el-icon>
+          </el-button>
+          <el-button text size="small" @click="importVisible = true">
+            <el-icon><Upload /></el-icon>
+            导入
           </el-button>
           <el-button class="new-connection" type="primary" size="small" @click="openEdit('')">
             <el-icon><Plus /></el-icon>
@@ -619,6 +626,7 @@ onUnmounted(() => {
         :clone-from-id="cloneFromId"
       />
       <SettingsPanel v-model:visible="settingsVisible" />
+      <ImportDialog v-model:visible="importVisible" @imported="appStore.refresh()" />
       <CommandPalette
         :visible="cmdPaletteVisible"
         :session-id="sessionStore.activeSessionId ?? ''"
@@ -715,6 +723,9 @@ onUnmounted(() => {
 }
 .brand-name span {
   color: var(--tx-green-hover);
+}
+.brand-x {
+  font-weight: 800;
 }
 .view-switcher {
   display: flex;

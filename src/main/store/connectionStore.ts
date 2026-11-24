@@ -42,10 +42,8 @@ export class ConnectionStore {
     return [...data.groups].sort((a, b) => a.order - b.order)
   }
 
-  async createConnection(input: ConnectionInput): Promise<ConnectionMeta> {
-    const data = await this.load()
-    const now = Date.now()
-    const meta: ConnectionMeta = {
+  private toMeta(input: ConnectionInput, now: number): ConnectionMeta {
+    return {
       id: randomUUID(),
       name: input.name,
       groupId: input.groupId ?? null,
@@ -60,10 +58,32 @@ export class ConnectionStore {
       updatedAt: now,
       timeoutMs: input.timeoutMs ?? null
     }
+  }
+
+  async createConnection(input: ConnectionInput): Promise<ConnectionMeta> {
+    const data = await this.load()
+    const meta = this.toMeta(input, Date.now())
     data.connections.push(meta)
     await this.save(data)
     await this.saveSecret(meta.id, input)
     return meta
+  }
+
+  /**
+   * 批量创建（导入场景）：元数据只读写一次，避免 N 条连接触发 N 次原子落盘；
+   * 凭据仍逐条进保险库，元数据文件里始终不出现密码。
+   */
+  async createMany(inputs: ConnectionInput[]): Promise<ConnectionMeta[]> {
+    if (inputs.length === 0) return []
+    const data = await this.load()
+    const now = Date.now()
+    const created = inputs.map((input) => this.toMeta(input, now))
+    data.connections.push(...created)
+    await this.save(data)
+    for (const [index, meta] of created.entries()) {
+      await this.saveSecret(meta.id, inputs[index])
+    }
+    return created
   }
 
   async updateConnection(id: string, input: ConnectionInput): Promise<ConnectionMeta> {

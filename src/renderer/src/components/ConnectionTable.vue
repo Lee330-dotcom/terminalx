@@ -47,13 +47,7 @@ const rows = computed<ConnectionWithStatus[]>(() => {
     list = list.filter((c) => c.groupId === gid)
   }
   if (q) {
-    list = list.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.host.toLowerCase().includes(q) ||
-        c.username.toLowerCase().includes(q) ||
-        groupName(c.groupId).toLowerCase().includes(q)
-    )
+    list = list.filter((c) => c.name.toLowerCase().includes(q))
   }
   // 排序
   if (sortKey.value) {

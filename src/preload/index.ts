@@ -102,7 +102,9 @@ const api: RendererApi = {
   },
   getPathForFile: (file) => webUtils.getPathForFile(file as File),
   openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
-  openDirectoryDialog: () => ipcRenderer.invoke('dialog:open-directory')
+  openDirectoryDialog: () => ipcRenderer.invoke('dialog:open-directory'),
+  importPreview: (request) => ipcRenderer.invoke(IpcChannels.importPreview, request),
+  importApply: (request) => ipcRenderer.invoke(IpcChannels.importApply, request)
 }
 
 if (process.contextIsolated) {

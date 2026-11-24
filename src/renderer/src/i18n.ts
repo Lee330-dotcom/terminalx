@@ -18,6 +18,7 @@ const zhCN: Record<string, string> = {
 
   // 顶部栏
   'app.newConnection': '新建连接',
+  'app.import': '导入',
   'app.newGroup': '新建分组',
   'app.files': '文件',
   'app.searchPlaceholder': 'ssh root@** / 搜索',
@@ -341,6 +342,7 @@ const enUS: Record<string, string> = {
   'common.nameNotEmpty': 'Name cannot be empty',
 
   'app.newConnection': 'New Connection',
+  'app.import': 'Import',
   'app.newGroup': 'New Group',
   'app.files': 'Files',
   'app.searchPlaceholder': 'ssh root@** / Search',

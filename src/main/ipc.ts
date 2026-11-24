@@ -5,6 +5,8 @@ import {
   AiChatStartRequest,
   ConnectionInput,
   IpcChannels,
+  ImportApplyRequest,
+  ImportPreviewRequest,
   ProbeTarget,
   Settings
 } from '@shared/types'
@@ -13,6 +15,7 @@ import { probeTargets } from './ssh/latencyProbe'
 import { describeSshError, testConnect } from './ssh/connectionManager'
 import { buildConnectConfigFromInput } from './ssh/config'
 import { applySystemSettings, applyWindowUi } from './uiSettings'
+import { buildPreview, toConnectionInputs } from './import/importService'
 
 const MCP_SETTING_KEYS = ['mcpEnabled', 'mcpPort', 'mcpDisabledTools'] as const
 
@@ -186,5 +189,34 @@ export function registerIpcHandlers(ctx: AppContext): void {
       ? await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] })
       : await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
     return result.canceled ? null : (result.filePaths[0] ?? null)
+  })
+
+  // ---- 导入 ----
+  ipcMain.handle(IpcChannels.importPreview, async (_e, req: ImportPreviewRequest) => {
+    const content = await fs.readFile(req.filePath, 'utf-8')
+    const existing = await ctx.connections.listConnections()
+    return buildPreview(req.kind, content, existing)
+  })
+
+  ipcMain.handle(IpcChannels.importApply, async (_e, req: ImportApplyRequest) => {
+    const content = await fs.readFile(req.filePath, 'utf-8')
+    const existing = await ctx.connections.listConnections()
+    const preview = buildPreview(req.kind, content, existing)
+    if (!preview.ok) throw new Error(preview.error ?? '导入预览失败')
+    const password = req.kind === 'bastion' ? (req.password ?? null) : null
+    const inputs = toConnectionInputs(preview, req.groupId ?? null, password)
+    // 模板模式：按 host+port+username 注入各行密码
+    if (req.kind === 'template' && req.passwordMap) {
+      for (const input of inputs) {
+        const key = `${input.host}:${input.port}:${input.username}`
+        if (req.passwordMap[key]) input.password = req.passwordMap[key]
+      }
+    }
+    const created = await ctx.connections.createMany(inputs)
+    return {
+      created: created.length,
+      skippedDuplicates: preview.duplicates,
+      skippedErrors: preview.invalid
+    }
   })
 }
