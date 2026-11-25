@@ -1,22 +1,18 @@
 import { defineStore } from 'pinia'
-import { SessionStatus } from '@shared/types'
 
-export interface SessionTab {
-  sessionId: string
-  connectionId: string
-  title: string
-  status: SessionStatus
-  errorMessage?: string
-}
-
-let unsubStatus: (() => void) | null = null
-
-const USAGE_KEY = 'terminalx.usage'
+/**
+ * 连接使用记录：统计每个连接的打开次数与最近使用时间，
+ * 供连接中心的「最近使用 / 常用」筛选使用。
+ *
+ * 标签、窗格与会话生命周期由 `stores/workspace.ts` 负责。
+ */
 
 interface UsageRecord {
   count: number
   lastAt: number
 }
+
+const USAGE_KEY = 'terminalx.usage'
 
 function loadUsage(): Record<string, UsageRecord> {
   try {
@@ -32,14 +28,9 @@ function saveUsage(usage: Record<string, UsageRecord>): void {
 
 export const useSessionStore = defineStore('sessions', {
   state: () => ({
-    tabs: [] as SessionTab[],
-    activeSessionId: null as string | null,
     usage: loadUsage() as Record<string, UsageRecord>
   }),
   getters: {
-    activeTab(state): SessionTab | null {
-      return state.tabs.find((t) => t.sessionId === state.activeSessionId) ?? null
-    },
     recentIds(state): string[] {
       return Object.entries(state.usage)
         .sort((a, b) => b[1].lastAt - a[1].lastAt)
@@ -56,58 +47,6 @@ export const useSessionStore = defineStore('sessions', {
       const prev = this.usage[connectionId] ?? { count: 0, lastAt: 0 }
       this.usage[connectionId] = { count: prev.count + 1, lastAt: Date.now() }
       saveUsage(this.usage)
-    },
-    ensureStatusListener(): void {
-      if (unsubStatus) return
-      unsubStatus = window.api.onSessionStatus((ev) => {
-        const tab = this.tabs.find((t) => t.sessionId === ev.sessionId)
-        if (tab) {
-          tab.status = ev.status
-          tab.errorMessage = ev.errorMessage
-        }
-      })
-    },
-    async openSession(connectionId: string, title?: string): Promise<void> {
-      this.ensureStatusListener()
-      const existing = this.tabs.find((tab) => tab.connectionId === connectionId)
-      if (existing) {
-        this.activeSessionId = existing.sessionId
-        if (existing.status === 'disconnected') void this.reconnect(existing.sessionId)
-        this.recordUsage(connectionId)
-        return
-      }
-      const { sessionId } = await window.api.openSession(connectionId)
-      this.tabs.push({
-        sessionId,
-        connectionId,
-        title: title ?? connectionId,
-        status: 'connecting'
-      })
-      this.activeSessionId = sessionId
-      this.recordUsage(connectionId)
-    },
-    setActive(sessionId: string): void {
-      this.activeSessionId = sessionId
-      const tab = this.tabs.find((t) => t.sessionId === sessionId)
-      if (tab && tab.status === 'disconnected') {
-        void this.reconnect(sessionId)
-      }
-    },
-    async closeSession(sessionId: string): Promise<void> {
-      await window.api.closeSession(sessionId)
-      const idx = this.tabs.findIndex((t) => t.sessionId === sessionId)
-      if (idx >= 0) this.tabs.splice(idx, 1)
-      if (this.activeSessionId === sessionId) {
-        this.activeSessionId =
-          this.tabs.length > 0 ? this.tabs[Math.max(0, idx - 1)].sessionId : null
-      }
-    },
-    async reconnect(sessionId: string): Promise<void> {
-      const tab = this.tabs.find((t) => t.sessionId === sessionId)
-      if (!tab) return
-      tab.status = 'connecting'
-      tab.errorMessage = undefined
-      await window.api.reconnectSession(sessionId)
     }
   }
 })

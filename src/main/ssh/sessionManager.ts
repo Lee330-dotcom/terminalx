@@ -151,16 +151,14 @@ export class SessionManager {
       })
       stream.on('close', () => {
         this.flush(session)
-        handle?.release()
-        // 迟到的旧通道 close（重连后旧 stream 才关闭）：
-        // session.stream 已被新通道替换，此时不得清理新通道、也不得改状态
+        // 通道已被重连或用户关闭替换过：那条路径已经结算过句柄，不能重复计数
         if (session.stream !== stream) return
         this.clearAutoCd(session)
         session.stream = null
         session.handle = null
         if (!session.closedByUser) {
           // 远端主动断开说明会话已终止（堡垒机会整体拆除 SSH 会话），
-          // 立即销毁底层连接，避免重连时复用濒死连接
+          // 放弃引用；若该连接仍被其它会话（如同主机的其它分屏）持有则保留连接
           handle?.drop()
           this.setStatus(session, 'disconnected')
         }

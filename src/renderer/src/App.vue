@@ -21,17 +21,18 @@ import ConnectionTree from './components/ConnectionTree.vue'
 import ConnectionTable from './components/ConnectionTable.vue'
 import ConnectionFormDialog from './components/ConnectionFormDialog.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
-import TerminalView from './components/TerminalView.vue'
 import SftpPanel from './components/SftpPanel.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import AiPanel from './components/AiPanel.vue'
 import ImportDialog from './components/ImportDialog.vue'
-import { useSessionStore, SessionTab } from './stores/sessions'
+import WorkspaceGrid from './components/workspace/WorkspaceGrid.vue'
+import { useWorkspaceStore, PaneState } from './stores/workspace'
 import { useAiStore } from './stores/ai'
 import { useAiChatStore } from './stores/aiChat'
 import { useAppStore } from './stores/app'
 import { useSettingsStore } from './stores/settings'
 import { t, currentLang } from './i18n'
+import { MAX_PANES_PER_TAB } from './workspace/splitTree'
 import {
   getTerminalSearch,
   resetTerminalSearchResult,
@@ -41,7 +42,7 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import en from 'element-plus/es/locale/lang/en'
 import type { ConnectionFilter } from './filter'
 
-const sessionStore = useSessionStore()
+const workspaceStore = useWorkspaceStore()
 const appStore = useAppStore()
 const settingsStore = useSettingsStore()
 const aiStore = useAiStore()
@@ -133,7 +134,7 @@ function cloneConnection(id: string): void {
 async function connect(connectionId: string): Promise<void> {
   try {
     const conn = appStore.connections.find((c) => c.id === connectionId)
-    await sessionStore.openSession(connectionId, conn?.name)
+    await workspaceStore.openConnection(connectionId, conn?.name)
     connectionCenterVisible.value = false
   } catch (err) {
     ElMessage.error(t('app.connectFailed', { err: String(err) }))
@@ -152,28 +153,58 @@ async function createGroup(): Promise<void> {
   }
 }
 
-const activeConnectionId = computed(() => {
-  const tab = sessionStore.tabs.find((t) => t.sessionId === sessionStore.activeSessionId)
-  return tab?.connectionId ?? null
-})
-const activeTab = computed(() => sessionStore.activeTab)
+const activeConnectionId = computed(() => workspaceStore.activeConnectionId)
+const focusedPane = computed(() => workspaceStore.focusedPane)
+
+function newTab(): void {
+  workspaceStore.createTab(t('ws.newTab'))
+  connectionCenterVisible.value = false
+}
 
 function onGlobalKeydown(e: KeyboardEvent): void {
-  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+  const mod = e.metaKey || e.ctrlKey
+  if (mod && e.key.toLowerCase() === 'k') {
     e.preventDefault()
     cmdPaletteVisible.value = !cmdPaletteVisible.value
   }
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
+  if (mod && e.key.toLowerCase() === 'n') {
     e.preventDefault()
     openEdit('')
   }
-  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+  if (mod && e.shiftKey && e.key.toLowerCase() === 'f') {
     e.preventDefault()
     document.querySelector<HTMLInputElement>('.title-search input')?.focus()
   }
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'w' && sessionStore.activeSessionId) {
+  if (mod && e.key.toLowerCase() === 't' && !e.shiftKey) {
     e.preventDefault()
-    void sessionStore.closeSession(sessionStore.activeSessionId)
+    newTab()
+  }
+  if (mod && e.key.toLowerCase() === 'w') {
+    const pane = focusedPane.value
+    if (pane) {
+      e.preventDefault()
+      void workspaceStore.closePane(pane.id)
+    }
+  }
+  if (mod && e.key.toLowerCase() === 'd') {
+    const pane = focusedPane.value
+    if (!pane) return
+    e.preventDefault()
+    // ⌘D 左右分屏，⇧⌘D 上下分屏
+    const ok = workspaceStore.splitPane(pane.id, e.shiftKey ? 'y' : 'x')
+    if (!ok) ElMessage.warning(t('ws.paneLimit', { n: MAX_PANES_PER_TAB }))
+  }
+  if (mod && e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    e.preventDefault()
+    workspaceStore.cycleFocus(e.key === 'ArrowRight' ? 1 : -1)
+  }
+  if (mod && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) {
+    const index = Number(e.key) - 1
+    const tab = workspaceStore.tabs[index]
+    if (tab) {
+      e.preventDefault()
+      workspaceStore.setActiveTab(tab.id)
+    }
   }
   if (e.key === 'Escape') {
     cmdPaletteVisible.value = false
@@ -182,29 +213,19 @@ function onGlobalKeydown(e: KeyboardEvent): void {
 }
 
 function sendCommand(command: string): void {
-  if (sessionStore.activeSessionId) {
-    window.api.sendInput(sessionStore.activeSessionId, new TextEncoder().encode(command))
+  const sessionId = workspaceStore.activeSessionId
+  if (sessionId) {
+    window.api.sendInput(sessionId, new TextEncoder().encode(command))
   }
 }
 
-function explainSelection(tab: SessionTab, text: string): void {
-  void aiStore.run({
-    kind: 'selection-explanation',
-    title: tab.title,
-    scope: `选中 ${text.trim().length} 字符`,
-    sessionId: tab.sessionId,
-    connectionId: tab.connectionId,
-    selection: text
-  })
-}
-
-function summarizeSession(tab: SessionTab): void {
+function summarizeSession(pane: PaneState): void {
   void aiStore.run({
     kind: 'session-summary',
-    title: tab.title,
+    title: pane.title,
     scope: '最近 300 行',
-    sessionId: tab.sessionId,
-    connectionId: tab.connectionId
+    sessionId: pane.sessionId ?? undefined,
+    connectionId: pane.connectionId ?? undefined
   })
 }
 
@@ -213,13 +234,13 @@ function toggleAiPanel(): void {
   if (!aiStore.visible) return
   void aiStore.refreshStatus()
   void aiChatStore.refreshStatus()
-  if (activeTab.value?.status !== 'connected') aiStore.panelTab = 'analysis'
+  if (focusedPane.value?.status !== 'connected') aiStore.panelTab = 'analysis'
 }
 
 function activeTerminalSearch(): ReturnType<typeof getTerminalSearch> {
-  const tab = sessionStore.activeTab
-  if (!tab || tab.status !== 'connected') return undefined
-  return getTerminalSearch(tab.sessionId)
+  const pane = focusedPane.value
+  if (!pane?.sessionId || pane.status !== 'connected') return undefined
+  return getTerminalSearch(pane.sessionId)
 }
 
 function runTerminalSearch(incremental: boolean): void {
@@ -262,7 +283,7 @@ function onTerminalSearchKeydown(event: KeyboardEvent): void {
 watch(terminalSearchQuery, () => runTerminalSearch(true))
 
 watch(
-  () => sessionStore.activeSessionId,
+  () => workspaceStore.activeSessionId,
   async (nextId, prevId) => {
     if (prevId && prevId !== nextId) getTerminalSearch(prevId)?.clear()
     await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)))
@@ -272,7 +293,7 @@ watch(
 )
 
 watch(
-  () => sessionStore.activeTab?.status,
+  () => focusedPane.value?.status,
   async (status) => {
     if (status !== 'connected') {
       resetTerminalSearchResult()
@@ -285,7 +306,10 @@ watch(
 )
 
 watch(
-  () => ({ id: sessionStore.activeSessionId, status: sessionStore.activeTab?.status ?? null }),
+  () => ({
+    id: workspaceStore.activeSessionId,
+    status: focusedPane.value?.status ?? null
+  }),
   (next, prev) => {
     const prevId = prev?.id ?? null
     if (prevId !== next.id) {
@@ -299,22 +323,12 @@ watch(
   { immediate: true }
 )
 
-function diagnoseConnection(tab: SessionTab): void {
-  void aiStore.run({
-    kind: 'connection-diagnosis',
-    title: tab.title,
-    scope: '连接诊断',
-    sessionId: tab.sessionId,
-    connectionId: tab.connectionId,
-    errorMessage: tab.errorMessage ?? ''
-  })
-}
-
 onMounted(() => {
   void appStore.refresh()
   void settingsStore.load()
   void aiStore.refreshStatus()
   aiChatStore.ensureListeners()
+  workspaceStore.ensureStatusListener()
   document.addEventListener('keydown', onGlobalKeydown)
 })
 
@@ -337,20 +351,20 @@ onUnmounted(() => {
           <div class="view-switcher">
             <button
               class="view-switch"
-              :class="{ active: sessionStore.tabs.length === 0 || connectionCenterVisible }"
+              :class="{ active: workspaceStore.tabs.length === 0 || connectionCenterVisible }"
               @click="connectionCenterVisible = true"
             >
               <el-icon><Connection /></el-icon> 连接
             </button>
             <button
               class="view-switch"
-              :class="{ active: sessionStore.tabs.length > 0 && !connectionCenterVisible }"
-              :disabled="sessionStore.tabs.length === 0"
+              :class="{ active: workspaceStore.tabs.length > 0 && !connectionCenterVisible }"
+              :disabled="workspaceStore.tabs.length === 0"
               @click="connectionCenterVisible = false"
             >
               <el-icon><Monitor /></el-icon> 会话
-              <span v-if="sessionStore.tabs.length" class="view-count">{{
-                sessionStore.tabs.length
+              <span v-if="workspaceStore.tabs.length" class="view-count">{{
+                workspaceStore.tabs.length
               }}</span>
             </button>
           </div>
@@ -395,14 +409,14 @@ onUnmounted(() => {
 
       <div class="app-body">
         <!-- 未连接时显示连接树侧栏 -->
-        <aside v-if="sessionStore.tabs.length === 0 && sidebarCollapsed" class="sidebar-rail">
+        <aside v-if="workspaceStore.tabs.length === 0 && sidebarCollapsed" class="sidebar-rail">
           <el-tooltip content="展开连接列表" placement="right">
             <el-button text circle @click="sidebarCollapsed = false"
               ><el-icon><FolderOpened /></el-icon
             ></el-button>
           </el-tooltip>
         </aside>
-        <aside v-if="sessionStore.tabs.length === 0 && !sidebarCollapsed" class="sidebar">
+        <aside v-if="workspaceStore.tabs.length === 0 && !sidebarCollapsed" class="sidebar">
           <div class="sidebar-header">
             <div>
               <p class="sidebar-eyebrow">CONNECTIONS</p>
@@ -431,10 +445,10 @@ onUnmounted(() => {
         <!-- 连接后左侧显示文件工作区 -->
         <div
           v-if="
-            sessionStore.tabs.length > 0 &&
+            workspaceStore.tabs.length > 0 &&
             sftpVisible &&
             activeConnectionId &&
-            activeTab?.status === 'connected'
+            focusedPane?.status === 'connected'
           "
           class="sftp-sidebar"
           :style="{ width: `${sftpWidth}px` }"
@@ -449,10 +463,10 @@ onUnmounted(() => {
         </div>
         <div
           v-if="
-            sessionStore.tabs.length > 0 &&
+            workspaceStore.tabs.length > 0 &&
             sftpVisible &&
             activeConnectionId &&
-            activeTab?.status === 'connected'
+            focusedPane?.status === 'connected'
           "
           class="sftp-resizer"
           @mousedown="startSftpResize"
@@ -460,7 +474,7 @@ onUnmounted(() => {
 
         <main class="main-area">
           <section
-            v-if="sessionStore.tabs.length === 0 || connectionCenterVisible"
+            v-if="workspaceStore.tabs.length === 0 || connectionCenterVisible"
             class="connection-center"
           >
             <div class="workspace-toolbar">
@@ -486,29 +500,33 @@ onUnmounted(() => {
             />
           </section>
           <div
-            v-show="sessionStore.tabs.length > 0 && !connectionCenterVisible"
+            v-show="workspaceStore.tabs.length > 0 && !connectionCenterVisible"
             class="tabs-area"
             :class="{ 'terminal-only': !connectionCenterVisible }"
             :style="{ height: connectionCenterVisible ? '60%' : '100%' }"
           >
             <div class="tab-bar">
               <div
-                v-for="tab in sessionStore.tabs"
-                :key="tab.sessionId"
+                v-for="tab in workspaceStore.tabs"
+                :key="tab.id"
                 class="tab"
-                :class="{ active: tab.sessionId === sessionStore.activeSessionId }"
-                @click="sessionStore.setActive(tab.sessionId)"
+                :class="{ active: tab.id === workspaceStore.activeTabId }"
+                @click="workspaceStore.setActiveTab(tab.id)"
               >
                 <span class="tab-title">{{ tab.title }}</span>
-                <span class="tab-close" @click.stop="sessionStore.closeSession(tab.sessionId)"
-                  >×</span
-                >
+                <span v-if="workspaceStore.tabPanes(tab.id).length > 1" class="tab-pane-count">
+                  {{ workspaceStore.tabPanes(tab.id).length }}
+                </span>
+                <span class="tab-close" @click.stop="workspaceStore.closeTab(tab.id)">×</span>
               </div>
+              <button class="tab-add" :title="t('ws.newTab')" @click="newTab">
+                <el-icon><Plus /></el-icon>
+              </button>
               <div class="tab-actions">
                 <div
-                  v-if="activeTab?.status === 'connected'"
+                  v-if="focusedPane?.status === 'connected'"
                   class="terminal-search"
-                  title="搜索当前终端页面的内容"
+                  :title="t('ws.searchCurrent')"
                 >
                   <el-icon class="terminal-search-icon"><Search /></el-icon>
                   <input
@@ -516,8 +534,8 @@ onUnmounted(() => {
                     class="terminal-search-input"
                     type="text"
                     spellcheck="false"
-                    placeholder="搜索当前页面"
-                    aria-label="搜索当前页面的内容"
+                    :placeholder="t('ws.searchPlaceholder')"
+                    :aria-label="t('ws.searchCurrent')"
                     @keydown="onTerminalSearchKeydown"
                   />
                   <span v-if="terminalSearchLabel" class="terminal-search-count">
@@ -525,8 +543,8 @@ onUnmounted(() => {
                   </span>
                   <button
                     class="terminal-search-btn"
-                    title="上一个"
-                    aria-label="上一个"
+                    :title="t('ws.searchPrev')"
+                    :aria-label="t('ws.searchPrev')"
                     :disabled="!terminalSearchResult.total"
                     @mousedown.prevent
                     @click="stepTerminalSearch(-1)"
@@ -535,8 +553,8 @@ onUnmounted(() => {
                   </button>
                   <button
                     class="terminal-search-btn"
-                    title="下一个"
-                    aria-label="下一个"
+                    :title="t('ws.searchNext')"
+                    :aria-label="t('ws.searchNext')"
                     :disabled="!terminalSearchResult.total"
                     @mousedown.prevent
                     @click="stepTerminalSearch(1)"
@@ -545,8 +563,8 @@ onUnmounted(() => {
                   </button>
                   <button
                     class="terminal-search-btn"
-                    title="清空"
-                    aria-label="清空"
+                    :title="t('ws.searchClear')"
+                    :aria-label="t('ws.searchClear')"
                     :disabled="!terminalSearchQuery"
                     @mousedown.prevent
                     @click="clearTerminalSearch"
@@ -555,15 +573,15 @@ onUnmounted(() => {
                   </button>
                 </div>
                 <el-tooltip
-                  v-if="activeTab?.status === 'connected'"
+                  v-if="focusedPane?.status === 'connected'"
                   placement="bottom"
-                  content="读取当前会话最近 300 行输出，由 AI 总结关键信息、异常与下一步建议（只读，不执行命令）"
+                  :content="t('ws.aiSummaryDesc')"
                 >
                   <span
                     class="sub-tab ai-summary-btn"
-                    @click="activeTab && summarizeSession(activeTab)"
+                    @click="focusedPane && summarizeSession(focusedPane)"
                   >
-                    ✦ AI 摘要
+                    ✦ {{ t('ws.aiSummary') }}
                   </span>
                 </el-tooltip>
                 <span
@@ -578,34 +596,14 @@ onUnmounted(() => {
             </div>
             <div class="tab-body">
               <div class="panel-main">
-                <template v-for="tab in sessionStore.tabs" :key="tab.sessionId">
-                  <div v-show="tab.sessionId === sessionStore.activeSessionId" class="tab-panel">
-                    <div v-if="tab.status === 'error'" class="state-panel error">
-                      <p>{{ t('app.connectFailed', { err: tab.errorMessage }) }}</p>
-                      <div class="state-panel-actions">
-                        <el-button type="primary" @click="sessionStore.reconnect(tab.sessionId)">
-                          {{ t('app.reconnect') }}
-                        </el-button>
-                        <el-button @click="diagnoseConnection(tab)">✦ AI 诊断</el-button>
-                      </div>
-                    </div>
-                    <div v-else-if="tab.status === 'disconnected'" class="state-panel">
-                      <p>{{ t('app.disconnected') }}</p>
-                      <el-button type="primary" @click="sessionStore.reconnect(tab.sessionId)">
-                        {{ t('app.reconnect') }}
-                      </el-button>
-                    </div>
-                    <TerminalView
-                      v-else
-                      :session-id="tab.sessionId"
-                      :interactive="tab.status === 'connected'"
-                      @explain="(text: string) => explainSelection(tab, text)"
-                    />
-                    <div v-if="tab.status === 'connecting'" class="terminal-connecting">
-                      正在连接…
-                    </div>
-                  </div>
-                </template>
+                <div
+                  v-for="tab in workspaceStore.tabs"
+                  :key="tab.id"
+                  v-show="tab.id === workspaceStore.activeTabId"
+                  class="tab-panel"
+                >
+                  <WorkspaceGrid :tab-id="tab.id" />
+                </div>
               </div>
             </div>
           </div>
@@ -629,7 +627,7 @@ onUnmounted(() => {
       <ImportDialog v-model:visible="importVisible" @imported="appStore.refresh()" />
       <CommandPalette
         :visible="cmdPaletteVisible"
-        :session-id="sessionStore.activeSessionId ?? ''"
+        :session-id="workspaceStore.activeSessionId ?? ''"
         @close="cmdPaletteVisible = false"
         @send="sendCommand"
       />
@@ -1112,6 +1110,38 @@ onUnmounted(() => {
   color: var(--tx-text);
   font-weight: 500;
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--tx-text) 8%, transparent);
+}
+.tab-pane-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--tx-accent) 24%, transparent);
+  color: var(--tx-accent-hover);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.tab-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin: auto 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tx-text-3);
+  cursor: pointer;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.tab-add:hover {
+  background: var(--tx-hover);
+  color: var(--tx-text);
 }
 .tab-close {
   color: var(--tx-text-3);

@@ -111,6 +111,30 @@ describe('ConnectionManager 集成', () => {
     await new Promise((r) => setTimeout(r, 400))
     expect(manager.isOnline('conn-1')).toBe(false)
   })
+
+  it('共享连接：drop 其中一个句柄不影响另一个持有的连接', async () => {
+    const manager = makeManager('test-pass')
+    const h1 = await manager.acquire('conn-1')
+    const h2 = await manager.acquire('conn-1')
+    expect(h1.client).toBe(h2.client)
+    h1.drop()
+    // 另一个句柄仍在使用同一底层连接：连接必须存活
+    expect(manager.isOnline('conn-1')).toBe(true)
+    const h3 = await manager.acquire('conn-1')
+    expect(h3.client).toBe(h1.client)
+    h2.release()
+    h3.release()
+  })
+
+  it('共享连接：最后一个持有者 drop 后连接被销毁', async () => {
+    const manager = makeManager('test-pass')
+    const h1 = await manager.acquire('conn-1')
+    const h2 = await manager.acquire('conn-1')
+    h1.drop()
+    expect(manager.isOnline('conn-1')).toBe(true)
+    h2.drop()
+    expect(manager.isOnline('conn-1')).toBe(false)
+  })
 })
 
 describe('SessionManager 自动切换目录', () => {
@@ -259,5 +283,32 @@ describe('SessionManager 集成', () => {
     const last = manager.readLines(sessionId, 1)
     expect(last.lines).toEqual(['$ abcdef'])
     await manager.close(sessionId)
+  })
+
+  it('同一连接的两个会话：关闭其中一个，另一个仍可输入输出', async () => {
+    const { events, manager } = collect()
+    const a = await manager.open('conn-1')
+    const b = await manager.open('conn-1')
+    await new Promise((r) => setTimeout(r, 300))
+    expect(manager.list().filter((s) => s.status === 'connected')).toHaveLength(2)
+
+    await manager.close(a.sessionId)
+    await new Promise((r) => setTimeout(r, 200))
+
+    // 被关闭的会话已消失，另一个会话仍是 connected
+    expect(manager.has(a.sessionId)).toBe(false)
+    const bStatus = events
+      .filter((e) => e.type === 'status' && e.sessionId === b.sessionId)
+      .map((e) => e.status)
+    expect(bStatus[bStatus.length - 1]).toBe('connected')
+
+    manager.input(b.sessionId, new TextEncoder().encode('still-alive'))
+    await new Promise((r) => setTimeout(r, 300))
+    const bText = events
+      .filter((e) => e.type === 'data' && e.sessionId === b.sessionId)
+      .map((e) => e.data)
+      .join('')
+    expect(bText).toContain('still-alive')
+    await manager.close(b.sessionId)
   })
 })

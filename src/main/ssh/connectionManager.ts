@@ -39,7 +39,11 @@ export interface ClientHandle {
   client: Client
   /** 释放引用；引用归零后延迟空闲销毁，可被后续操作复用 */
   release(): void
-  /** 立即销毁并移出连接池（远端会话已终止时使用，防止复用濒死连接） */
+  /**
+   * 放弃引用：归还引用计数，仅当该连接已无其它持有者时才立即销毁底层连接。
+   * 同一连接可能被多个会话共用（如同一主机的多个标签/分屏），
+   * 此时销毁会连带杀死其它会话的通道，因此必须先看引用计数。
+   */
   drop(): void
 }
 
@@ -93,7 +97,14 @@ export class ConnectionManager {
           )
         }
       },
-      drop: () => this.destroy(connectionId, managed)
+      drop: () => {
+        if (this.clients.get(connectionId) !== managed) return
+        managed.refCount = Math.max(0, managed.refCount - 1)
+        // 同一连接仍被其它会话持有（如同一主机开了多个标签/分屏）：
+        // 只销毁自己的通道语义，不动底层连接，否则会连带杀死其它会话
+        if (managed.refCount > 0) return
+        this.destroy(connectionId, managed)
+      }
     }
   }
 

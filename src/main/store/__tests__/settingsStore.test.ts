@@ -62,7 +62,7 @@ describe('外观模式迁移', () => {
     await writeLegacy(dir, { followSystemTheme: true })
     const s = await new SettingsStore(file(dir)).get()
     expect(s.themeMode).toBe('system')
-    expect((s as Record<string, unknown>).followSystemTheme).toBeUndefined()
+    expect((s as unknown as Record<string, unknown>).followSystemTheme).toBeUndefined()
   })
 
   it('旧 followSystemTheme=false 且深色背景迁移为 dark', async () => {

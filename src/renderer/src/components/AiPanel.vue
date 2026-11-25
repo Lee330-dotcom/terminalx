@@ -4,7 +4,7 @@ import { ElMessage } from 'element-plus'
 import { Close } from '@element-plus/icons-vue'
 import { useAiStore } from '../stores/ai'
 import { useAiChatStore, ChatTimelineItem } from '../stores/aiChat'
-import { useSessionStore } from '../stores/sessions'
+import { useWorkspaceStore } from '../stores/workspace'
 import { useSettingsStore } from '../stores/settings'
 import type { CommandRisk, CommandSuggestion } from '../utils/aiCommand'
 import { renderMarkdown } from '../utils/markdown'
@@ -14,7 +14,7 @@ const props = withDefaults(defineProps<{ width?: number }>(), { width: 380 })
 
 const aiStore = useAiStore()
 const chatStore = useAiChatStore()
-const sessionStore = useSessionStore()
+const workspaceStore = useWorkspaceStore()
 const settingsStore = useSettingsStore()
 const bodyRef = ref<HTMLDivElement>()
 const chatBodyRef = ref<HTMLDivElement>()
@@ -51,22 +51,25 @@ watch(
 )
 
 const connectedTab = computed(() => {
-  const tab = sessionStore.activeTab
-  return tab && tab.status === 'connected' ? tab : null
+  const pane = workspaceStore.focusedPane
+  return pane && pane.status === 'connected' ? pane : null
 })
 
-const insertTarget = computed(
-  () =>
-    sessionStore.tabs.find(
-      (tab) => tab.sessionId === aiStore.runSessionId && tab.status === 'connected'
-    ) ?? null
-)
+const insertTarget = computed(() => {
+  if (!aiStore.runSessionId) return null
+  const pane = workspaceStore.paneBySessionId(aiStore.runSessionId)
+  return pane && pane.status === 'connected' ? pane : null
+})
 
 const canSend = computed(
   () => Boolean(connectedTab.value) && !aiStore.running && instruction.value.trim().length > 0
 )
 
-const canChat = computed(() => Boolean(connectedTab.value) && chatInput.value.trim().length > 0)
+const canChat = computed(
+  () =>
+    Boolean(connectedTab.value?.sessionId && connectedTab.value?.connectionId) &&
+    chatInput.value.trim().length > 0
+)
 
 const currentScope = computed(() =>
   aiStore.panelTab === 'analysis' ? aiStore.scope : (connectedTab.value?.title ?? '')
@@ -122,8 +125,8 @@ async function sendCommand(): Promise<void> {
     kind: 'command-suggestion',
     title: '命令建议',
     scope: tab.title,
-    sessionId: tab.sessionId,
-    connectionId: tab.connectionId,
+    sessionId: tab.sessionId ?? undefined,
+    connectionId: tab.connectionId ?? undefined,
     instruction: text
   })
 }
@@ -141,7 +144,7 @@ async function insertCommand(command: CommandSuggestion): Promise<void> {
     return
   }
   if (isMultiline(command.command)) return
-  window.api.sendInput(target.sessionId, new TextEncoder().encode(command.command))
+  window.api.sendInput(target.sessionId ?? '', new TextEncoder().encode(command.command))
   if (!inserted.value.includes(command.command)) inserted.value.push(command.command)
   ElMessage.success('已插入终端，按 Enter 执行')
   focusTerminal()
@@ -166,14 +169,17 @@ function scrollChat(): void {
 
 async function sendChat(): Promise<void> {
   const tab = connectedTab.value
-  if (!tab) {
+  if (!tab?.sessionId || !tab.connectionId) {
     ElMessage.warning('请先连接服务器')
     return
   }
   if (!chatInput.value.trim()) return
   const text = chatInput.value
   chatInput.value = ''
-  await chatStore.send(text, { sessionId: tab.sessionId, connectionId: tab.connectionId })
+  await chatStore.send(text, {
+    sessionId: tab.sessionId,
+    connectionId: tab.connectionId
+  })
   await nextTick()
   scrollChat()
 }
