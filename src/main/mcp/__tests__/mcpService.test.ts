@@ -43,8 +43,8 @@ function makeCtx(port: number): unknown {
     ssh: {
       isOnline: () => true,
       exec: async (_id: string, command: string): Promise<ExecCommandResult> => ({
-        stdout: command === 'big' ? 'A'.repeat(60 * 1024) : `stdout:${command}`,
-        stderr: command === 'big' ? 'B'.repeat(8 * 1024) : '',
+        stdout: command === 'ls /tmp' ? 'A'.repeat(60 * 1024) : `stdout:${command}`,
+        stderr: command === 'ls /tmp' ? 'B'.repeat(8 * 1024) : '',
         exitCode: 0,
         truncated: false,
         durationMs: 12
@@ -216,16 +216,16 @@ describe('McpService Streamable HTTP + Bearer 鉴权', () => {
   it('exec_command 返回 stdout/stderr/exit_code，超限输出被截断', async () => {
     const small = (await callTool('exec_command', {
       connection_id: 'c1',
-      command: 'echo hi'
+      command: 'cat /tmp/test'
     })) as { result?: { content?: { text: string }[] } }
     const smallText = small.result?.content?.[0].text ?? ''
-    expect(smallText).toContain('stdout:echo hi')
+    expect(smallText).toContain('stdout:cat /tmp/test')
     expect(smallText).toContain('"exit_code": 0')
     expect(smallText).toContain('"truncated": false')
 
     const big = (await callTool('exec_command', {
       connection_id: 'c1',
-      command: 'big'
+      command: 'ls /tmp'
     })) as { result?: { content?: { text: string }[] } }
     const bigText = big.result?.content?.[0].text ?? ''
     expect(bigText).toContain('"truncated": true')
