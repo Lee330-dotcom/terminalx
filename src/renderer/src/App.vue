@@ -651,7 +651,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   padding: 0 18px;
-  background: color-mix(in srgb, var(--tx-nav) 92%, #303030);
+  background: color-mix(in srgb, var(--tx-nav) 92%, var(--tx-border-strong));
   border-bottom: 1px solid var(--tx-border);
   flex-shrink: 0;
   height: 56px;
@@ -691,8 +691,8 @@ onUnmounted(() => {
 }
 .title-search :deep(.el-input__wrapper.is-focus) {
   background: var(--tx-bg);
-  border-color: var(--tx-green);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tx-green) 14%, transparent);
+  border-color: var(--tx-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tx-accent) 14%, transparent);
 }
 .brand {
   display: flex;
@@ -707,14 +707,14 @@ onUnmounted(() => {
   width: 25px;
   height: 25px;
   border-radius: 7px;
-  color: #07140f;
-  background: var(--tx-green-hover);
+  color: var(--tx-on-accent);
+  background: var(--tx-accent-hover);
   font:
     700 13px/1 ui-monospace,
     SFMono-Regular,
     Menlo,
     monospace;
-  box-shadow: 0 0 18px color-mix(in srgb, var(--tx-green) 28%, transparent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--tx-accent) 28%, transparent);
 }
 .brand-name {
   color: var(--tx-text);
@@ -722,7 +722,7 @@ onUnmounted(() => {
   font-weight: 650;
 }
 .brand-name span {
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
 }
 .brand-x {
   font-weight: 800;
@@ -769,8 +769,8 @@ onUnmounted(() => {
   height: 15px;
   padding: 0 4px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--tx-green) 24%, transparent);
-  color: var(--tx-green-hover);
+  background: color-mix(in srgb, var(--tx-accent) 24%, transparent);
+  color: var(--tx-accent-hover);
   font-size: 10px;
 }
 .new-connection :deep(.el-icon) {
@@ -791,13 +791,13 @@ onUnmounted(() => {
   color: var(--tx-text-2);
 }
 .gear-btn:hover {
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
 }
 .ai-entry-btn {
   gap: 4px;
 }
 .ai-entry-label {
-  color: var(--tx-green);
+  color: var(--tx-accent);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.4px;
@@ -908,7 +908,7 @@ onUnmounted(() => {
   flex: 0 1 60%;
   min-height: 100px;
   margin-top: auto;
-  background: #14161f;
+  background: var(--tx-card);
 }
 .tabs-area.terminal-only {
   flex: 1 1 auto;
@@ -918,7 +918,7 @@ onUnmounted(() => {
 .tab-bar {
   display: flex;
   min-height: 42px;
-  background: var(--tx-nav, #1a1a1a);
+  background: var(--tx-nav);
   border-bottom: 1px solid var(--tx-border);
   overflow-x: auto;
   flex-shrink: 0;
@@ -951,7 +951,7 @@ onUnmounted(() => {
 }
 .sftp-resizer:hover,
 .sftp-resizer:active {
-  background: color-mix(in srgb, var(--tx-green) 55%, transparent);
+  background: color-mix(in srgb, var(--tx-accent) 55%, transparent);
 }
 .ai-resizer {
   width: 6px;
@@ -963,7 +963,7 @@ onUnmounted(() => {
 }
 .ai-resizer:hover,
 .ai-resizer:active {
-  background: color-mix(in srgb, var(--tx-green) 55%, transparent);
+  background: color-mix(in srgb, var(--tx-accent) 55%, transparent);
 }
 .sftp-sidebar :deep(.sftp-panel) {
   border-left: none;
@@ -972,7 +972,7 @@ onUnmounted(() => {
 .sub-tab-bar {
   display: flex;
   align-items: center;
-  background: var(--tx-nav, #1a1a1a);
+  background: var(--tx-nav);
   border-bottom: 1px solid var(--tx-border);
   padding: 0 8px;
   gap: 2px;
@@ -1005,8 +1005,8 @@ onUnmounted(() => {
   border-radius: 3px;
 }
 .sub-tab-close:hover {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.1);
+  color: var(--tx-danger);
+  background: var(--tx-danger-soft);
 }
 .tab-actions {
   display: flex;
@@ -1027,7 +1027,7 @@ onUnmounted(() => {
   transition: border-color 0.15s ease;
 }
 .terminal-search:focus-within {
-  border-color: var(--tx-green);
+  border-color: var(--tx-accent);
 }
 .terminal-search-icon {
   flex-shrink: 0;
@@ -1085,7 +1085,7 @@ onUnmounted(() => {
 }
 .sftp-show-btn,
 .ai-summary-btn {
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
 }
 .tab {
   display: flex;
@@ -1121,8 +1121,8 @@ onUnmounted(() => {
   border-radius: 4px;
 }
 .tab-close:hover {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.1);
+  color: var(--tx-danger);
+  background: var(--tx-danger-soft);
 }
 .panel-main {
   flex: 1;
@@ -1138,14 +1138,14 @@ onUnmounted(() => {
   flex-direction: column;
   min-height: 0;
   position: relative;
-  background: #14161f;
+  background: var(--tx-card);
 }
 .terminal-connecting {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(20, 22, 31, 0.55);
+  background: color-mix(in srgb, var(--tx-card) 55%, transparent);
   color: var(--tx-text-3);
   font-size: 12px;
   letter-spacing: 0.5px;
@@ -1168,7 +1168,7 @@ onUnmounted(() => {
   background: var(--tx-bg);
 }
 .state-panel.error {
-  color: #f87171;
+  color: var(--tx-danger);
 }
 .state-panel-actions {
   display: flex;

@@ -491,8 +491,8 @@ function outputText(item: ChatTimelineItem): string {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--tx-green-hover);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--tx-green) 60%, transparent);
+  background: var(--tx-accent-hover);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--tx-accent) 60%, transparent);
 }
 .ai-scope {
   color: var(--tx-text-3);
@@ -523,8 +523,8 @@ function outputText(item: ChatTimelineItem): string {
   color: var(--tx-text-2);
 }
 .ai-tab.active {
-  color: var(--tx-green-hover);
-  border-bottom-color: var(--tx-green);
+  color: var(--tx-accent-hover);
+  border-bottom-color: var(--tx-accent);
   font-weight: 600;
 }
 .ai-tab:disabled {
@@ -614,7 +614,7 @@ function outputText(item: ChatTimelineItem): string {
   margin: 8px 0;
   padding: 10px;
   border-radius: 6px;
-  background: var(--tx-bg, #0b1220);
+  background: var(--tx-bg);
   overflow-x: auto;
 }
 .markdown-body :deep(pre code) {
@@ -631,7 +631,7 @@ function outputText(item: ChatTimelineItem): string {
   color: var(--tx-text-3);
 }
 .markdown-body :deep(a) {
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
   text-decoration: none;
 }
 .markdown-body :deep(a:hover) {
@@ -670,14 +670,14 @@ function outputText(item: ChatTimelineItem): string {
   padding: 10px;
   border-radius: 8px;
   border: 1px solid var(--tx-border);
-  background: color-mix(in srgb, var(--tx-panel) 70%, var(--tx-bg, #0b1220));
+  background: color-mix(in srgb, var(--tx-panel) 70%, var(--tx-bg));
 }
 .ai-command-card.risk-medium {
-  border-color: rgba(251, 191, 36, 0.45);
+  border-color: color-mix(in srgb, var(--tx-warning) 45%, transparent);
 }
 .ai-command-card.risk-high {
-  border-color: rgba(248, 113, 113, 0.6);
-  background: rgba(248, 113, 113, 0.08);
+  border-color: color-mix(in srgb, var(--tx-danger) 60%, transparent);
+  background: color-mix(in srgb, var(--tx-danger) 10%, transparent);
 }
 .ai-command-head {
   display: flex;
@@ -697,25 +697,25 @@ function outputText(item: ChatTimelineItem): string {
   font-size: 10px;
   font-weight: 600;
   color: var(--tx-text-3);
-  background: rgba(148, 163, 184, 0.16);
+  background: var(--tx-fill);
 }
 .ai-risk-badge.risk-low {
-  color: var(--tx-green);
-  background: color-mix(in srgb, var(--tx-green) 16%, transparent);
+  color: var(--tx-accent);
+  background: color-mix(in srgb, var(--tx-accent) 16%, transparent);
 }
 .ai-risk-badge.risk-medium {
-  color: #fbbf24;
-  background: rgba(251, 191, 36, 0.16);
+  color: var(--tx-warning);
+  background: var(--tx-warning-soft);
 }
 .ai-risk-badge.risk-high {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.18);
+  color: var(--tx-danger);
+  background: var(--tx-danger-soft);
 }
 .ai-command-code {
   margin: 0;
   padding: 8px 10px;
   border-radius: 6px;
-  background: var(--tx-bg, #0b1220);
+  background: var(--tx-bg);
   color: var(--tx-text);
   font-family: 'SF Mono', Menlo, Consolas, monospace;
   font-size: 12px;
@@ -730,7 +730,7 @@ function outputText(item: ChatTimelineItem): string {
   line-height: 1.5;
 }
 .ai-local-risk {
-  color: #fbbf24;
+  color: var(--tx-warning);
 }
 .ai-command-warn {
   color: var(--tx-text-3);
@@ -755,8 +755,8 @@ function outputText(item: ChatTimelineItem): string {
   margin-top: 10px;
   padding: 8px 10px;
   border-radius: 6px;
-  background: rgba(248, 113, 113, 0.12);
-  color: #f87171;
+  background: var(--tx-danger-soft);
+  color: var(--tx-danger);
   font-size: 12px;
   line-height: 1.6;
   white-space: pre-wrap;
@@ -811,7 +811,7 @@ function outputText(item: ChatTimelineItem): string {
   max-width: 92%;
   padding: 8px 10px;
   border-radius: 10px 10px 2px 10px;
-  background: color-mix(in srgb, var(--tx-green) 18%, transparent);
+  background: color-mix(in srgb, var(--tx-accent) 18%, transparent);
   color: var(--tx-text);
   font-size: 12.5px;
   line-height: 1.65;
@@ -841,14 +841,14 @@ function outputText(item: ChatTimelineItem): string {
   padding: 10px;
   border-radius: 8px;
   border: 1px solid var(--tx-border);
-  background: color-mix(in srgb, var(--tx-panel) 70%, var(--tx-bg, #0b1220));
+  background: color-mix(in srgb, var(--tx-panel) 70%, var(--tx-bg));
 }
 .chat-tool.risk-medium {
-  border-color: rgba(251, 191, 36, 0.45);
+  border-color: color-mix(in srgb, var(--tx-warning) 45%, transparent);
 }
 .chat-tool.risk-high {
-  border-color: rgba(248, 113, 113, 0.6);
-  background: rgba(248, 113, 113, 0.08);
+  border-color: color-mix(in srgb, var(--tx-danger) 60%, transparent);
+  background: color-mix(in srgb, var(--tx-danger) 10%, transparent);
 }
 .chat-tool-head {
   display: flex;
@@ -868,22 +868,22 @@ function outputText(item: ChatTimelineItem): string {
   font-size: 10.5px;
 }
 .status-success {
-  color: var(--tx-green);
+  color: var(--tx-accent);
 }
 .status-warn,
 .status-awaiting-approval {
-  color: #fbbf24;
+  color: var(--tx-warning);
 }
 .status-failed,
 .status-rejected,
 .status-skipped {
-  color: #f87171;
+  color: var(--tx-danger);
 }
 .chat-tool-code {
   margin: 8px 0 0;
   padding: 8px 10px;
   border-radius: 6px;
-  background: var(--tx-bg, #0b1220);
+  background: var(--tx-bg);
   color: var(--tx-text);
   font-family: 'SF Mono', Menlo, Consolas, monospace;
   font-size: 12px;
@@ -898,10 +898,10 @@ function outputText(item: ChatTimelineItem): string {
   line-height: 1.5;
 }
 .chat-tool-reason {
-  color: #fbbf24;
+  color: var(--tx-warning);
 }
 .chat-tool-error {
-  color: #f87171;
+  color: var(--tx-danger);
   white-space: pre-wrap;
 }
 .chat-tool-actions {
@@ -914,7 +914,7 @@ function outputText(item: ChatTimelineItem): string {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
   font: inherit;
   font-size: 11px;
   cursor: pointer;
@@ -925,7 +925,7 @@ function outputText(item: ChatTimelineItem): string {
   padding: 8px 10px;
   overflow: auto;
   border-radius: 6px;
-  background: var(--tx-bg, #0b1220);
+  background: var(--tx-bg);
   color: var(--tx-text-2);
   font-family: 'SF Mono', Menlo, Consolas, monospace;
   font-size: 11px;

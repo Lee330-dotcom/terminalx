@@ -238,9 +238,9 @@ onMounted(() => store.refresh())
   color: var(--tx-text);
 }
 .tree-item.active {
-  background: color-mix(in srgb, var(--tx-green) 16%, transparent);
-  color: var(--tx-green-hover);
-  box-shadow: inset 2px 0 0 var(--tx-green);
+  background: color-mix(in srgb, var(--tx-accent) 16%, transparent);
+  color: var(--tx-accent-hover);
+  box-shadow: inset 2px 0 0 var(--tx-accent);
 }
 
 .group-header {
@@ -264,7 +264,7 @@ onMounted(() => store.refresh())
   flex-shrink: 0;
 }
 .tree-item.active .tree-icon {
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
 }
 
 .tree-label {
@@ -283,8 +283,8 @@ onMounted(() => store.refresh())
   text-align: center;
 }
 .tree-item.active .tree-count {
-  background: color-mix(in srgb, var(--tx-green) 22%, transparent);
-  color: var(--tx-green-hover);
+  background: color-mix(in srgb, var(--tx-accent) 22%, transparent);
+  color: var(--tx-accent-hover);
 }
 
 .tree-settings {
@@ -293,7 +293,7 @@ onMounted(() => store.refresh())
   cursor: pointer;
 }
 .tree-settings:hover {
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
 }
 
 .tree-children {
@@ -319,7 +319,7 @@ onMounted(() => store.refresh())
   background: var(--tx-card);
   border: 1px solid var(--tx-border);
   border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--tx-shadow-md);
   padding: 4px 0;
   min-width: 110px;
 }
@@ -333,6 +333,6 @@ onMounted(() => store.refresh())
   background: var(--tx-hover);
 }
 .menu-item.danger {
-  color: #f87171;
+  color: var(--tx-danger);
 }
 </style>

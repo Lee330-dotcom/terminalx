@@ -657,12 +657,12 @@ watch(
   content: '松开鼠标上传到当前目录';
   position: absolute;
   inset: 0;
-  background: rgba(16, 185, 129, 0.08);
-  border: 2px dashed var(--tx-green);
+  background: color-mix(in srgb, var(--tx-accent) 10%, transparent);
+  border: 2px dashed var(--tx-accent);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
   font-size: 14px;
   z-index: 10;
   pointer-events: none;
@@ -698,8 +698,8 @@ watch(
   color: var(--tx-text);
 }
 .tool-btn.active {
-  color: var(--tx-green);
-  background: rgba(16, 185, 129, 0.12);
+  color: var(--tx-accent);
+  background: var(--tx-accent-soft);
 }
 .toolbar-sep {
   width: 1px;
@@ -752,7 +752,7 @@ watch(
 }
 .breadcrumb-root:hover {
   background: var(--tx-hover);
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
 }
 .breadcrumb-sep {
   color: var(--tx-text-3);
@@ -766,7 +766,7 @@ watch(
 }
 .breadcrumb-part:hover {
   background: var(--tx-hover);
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
 }
 
 /* Tree */
@@ -797,8 +797,8 @@ watch(
   background: var(--tx-hover);
 }
 .tree-item.selected {
-  background: rgba(16, 185, 129, 0.12);
-  border-left-color: var(--tx-green);
+  background: var(--tx-accent-soft);
+  border-left-color: var(--tx-accent);
 }
 .tree-arrow {
   display: inline-flex;
@@ -814,7 +814,7 @@ watch(
   width: 10px;
   height: 10px;
   border: 2px solid var(--tx-border);
-  border-top-color: var(--tx-green);
+  border-top-color: var(--tx-accent);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
@@ -830,7 +830,7 @@ watch(
   color: var(--tx-text-2);
 }
 .icon-folder {
-  color: #f5a623;
+  color: var(--tx-warning);
 }
 .icon-file {
   color: var(--tx-text-3);
@@ -872,7 +872,7 @@ watch(
   background: var(--tx-card);
   border: 1px solid var(--tx-border);
   border-radius: 8px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--tx-shadow-lg);
   padding: 4px 0;
   overflow: hidden;
 }
@@ -897,10 +897,10 @@ watch(
   background: transparent;
 }
 .ctx-danger {
-  color: #f87171;
+  color: var(--tx-danger);
 }
 .ctx-danger:hover {
-  background: rgba(248, 113, 113, 0.1);
+  background: var(--tx-danger-soft);
 }
 .ctx-sep {
   height: 1px;

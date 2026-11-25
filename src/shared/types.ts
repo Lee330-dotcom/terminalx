@@ -3,6 +3,9 @@
 
 export type AuthType = 'password' | 'privateKey'
 
+/** 界面外观模式：浅色 / 深色 / 跟随系统 */
+export type ThemeMode = 'light' | 'dark' | 'system'
+
 export interface ConnectionMeta {
   id: string
   name: string
@@ -78,8 +81,8 @@ export interface Settings {
   backgroundColor: string
   /** 顶部导航栏背景色（hex） */
   navColor: string
-  /** 跟随系统深色/浅色主题（亮色用「明亮」预设，暗色用「暗夜」预设） */
-  followSystemTheme: boolean
+  /** 外观模式：浅色 / 深色 / 跟随系统 */
+  themeMode: ThemeMode
   /** 界面字体，空串表示系统默认 */
   uiFont: string
   /** 窗口不透明度（60-100） */

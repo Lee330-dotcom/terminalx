@@ -217,13 +217,13 @@ watch(
             <svg class="os-icon" viewBox="0 0 24 24" width="17" height="17" aria-label="Linux">
               <path
                 d="M12 2.5c-2.6 0-4.5 2-4.5 4.6v1.7C5.6 9.6 4.4 11.3 4.4 13.3c0 1.8 1.2 3.3 2.9 3.7l.2 3.6c0 .5.4.9 1 .9s1-.4 1-1v-2.6h5v2.6c0 .5.4 1 1 1s1-.4 1-1v-3.5c1.7-.4 2.9-1.9 2.9-3.7 0-2-1.2-3.7-3.1-4.5V7.1C16.5 4.5 14.6 2.5 12 2.5z"
-                fill="#3a3a3a"
+                class="os-icon-body"
               />
-              <ellipse cx="12" cy="12.4" rx="3.6" ry="4.4" fill="#dcdcdc" />
+              <ellipse cx="12" cy="12.4" rx="3.6" ry="4.4" class="os-icon-face" />
               <path
                 d="M10.3 8.6l1.7 1.5 1.7-1.5"
                 fill="none"
-                stroke="#f59e0b"
+                class="os-icon-mark"
                 stroke-width="1.5"
                 stroke-linecap="round"
               />
@@ -333,12 +333,12 @@ watch(
   gap: 10px;
   padding: 8px 12px;
   margin-bottom: 10px;
-  background: color-mix(in srgb, var(--tx-green) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tx-green) 30%, transparent);
+  background: color-mix(in srgb, var(--tx-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tx-accent) 30%, transparent);
   border-radius: 8px;
 }
 .batch-count {
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
   font-size: 13px;
 }
 .conn-table {
@@ -347,7 +347,7 @@ watch(
   background: var(--tx-panel);
   border: 1px solid var(--tx-border);
   border-radius: 8px;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--tx-shadow-md);
 }
 .row {
   display: flex;
@@ -359,7 +359,7 @@ watch(
   font-size: 13px;
 }
 .row:hover {
-  background: color-mix(in srgb, var(--tx-green) 5%, var(--tx-hover));
+  background: color-mix(in srgb, var(--tx-accent) 5%, var(--tx-hover));
 }
 .row.expanded {
   background: var(--tx-fill);
@@ -397,7 +397,7 @@ watch(
   font-size: 15px;
 }
 .star.filled {
-  color: #f5c518;
+  color: var(--tx-warning);
 }
 .col-os {
   width: 24px;
@@ -408,6 +408,15 @@ watch(
 }
 .os-icon {
   display: block;
+}
+.os-icon-body {
+  fill: var(--tx-text-3);
+}
+.os-icon-face {
+  fill: var(--tx-text);
+}
+.os-icon-mark {
+  stroke: var(--tx-warning);
 }
 .col-latency {
   width: 90px;
@@ -432,13 +441,13 @@ watch(
 }
 .latency-icon {
   font-size: 12px;
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
 }
 .latency-ok {
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
 }
 .latency-bad {
-  color: #f87171;
+  color: var(--tx-danger);
 }
 .latency-pending {
   color: var(--tx-text-3);
@@ -494,7 +503,7 @@ watch(
   flex-shrink: 0;
 }
 .copy-icon:hover {
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
 }
 .col-info {
   width: 70px;
@@ -517,14 +526,14 @@ watch(
   gap: 4px;
 }
 .col-actions .el-button--success {
-  background: var(--tx-green);
-  border-color: var(--tx-green);
-  color: #062c20;
+  background: var(--tx-accent);
+  border-color: var(--tx-accent);
+  color: var(--tx-on-accent);
   font-weight: 600;
 }
 .col-actions .el-button--success:hover {
-  background: var(--tx-green-hover);
-  border-color: var(--tx-green-hover);
+  background: var(--tx-accent-hover);
+  border-color: var(--tx-accent-hover);
 }
 .more-btn {
   display: flex;
@@ -538,7 +547,7 @@ watch(
   white-space: nowrap;
 }
 .more-btn:hover {
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
   background: var(--tx-hover);
 }
 .action-settings {
@@ -548,7 +557,7 @@ watch(
   margin-left: 8px;
 }
 .action-settings:hover {
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
 }
 .row.detail {
   background: var(--tx-fill);

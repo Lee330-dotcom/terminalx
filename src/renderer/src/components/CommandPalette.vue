@@ -149,7 +149,7 @@ function selectCommand(cmd: Command): void {
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--el-mask-color);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -159,10 +159,10 @@ function selectCommand(cmd: Command): void {
 .cmd-palette {
   width: 560px;
   max-height: 420px;
-  background: var(--tx-card, #1e1e1e);
+  background: var(--tx-card);
   border: 1px solid var(--tx-border);
   border-radius: 12px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--tx-shadow-lg);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -224,8 +224,8 @@ function selectCommand(cmd: Command): void {
 }
 .cmd-label {
   font-size: 13px;
-  color: var(--tx-green-hover);
-  background: rgba(16, 185, 129, 0.1);
+  color: var(--tx-accent-hover);
+  background: var(--tx-accent-soft);
   padding: 2px 8px;
   border-radius: 4px;
   font-family: 'Menlo, Monaco, monospace';

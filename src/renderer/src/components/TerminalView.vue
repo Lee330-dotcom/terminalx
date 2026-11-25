@@ -4,16 +4,9 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import { registerTerminalSearch, terminalSearchResult } from '../utils/terminalSearch'
+import { onThemeChange, themeTokensOrDefault } from '../theme'
+import { buildSearchDecorations, buildXtermTheme } from '../theme/xtermTheme'
 import '@xterm/xterm/css/xterm.css'
-
-const SEARCH_DECORATIONS = {
-  matchBackground: '#374151',
-  matchBorder: '#fbbf24',
-  matchOverviewRuler: '#fbbf24',
-  activeMatchBackground: '#b45309',
-  activeMatchBorder: '#fbbf24',
-  activeMatchColorOverviewRuler: '#fbbf24'
-}
 
 const props = defineProps<{ sessionId: string; interactive?: boolean }>()
 const emit = defineEmits<{ explain: [text: string] }>()
@@ -78,6 +71,7 @@ let unregisterSearch: (() => void) | null = null
 let searchResultSub: { dispose(): void } | null = null
 let unsubData: (() => void) | null = null
 let unsubSelection: (() => void) | null = null
+let unsubTheme: (() => void) | null = null
 let resizeObserver: ResizeObserver | null = null
 let lastMouse = { x: 0, y: 0 }
 
@@ -144,28 +138,7 @@ onMounted(() => {
     cursorBlink: true,
     scrollback: 5000,
     allowProposedApi: true,
-    theme: {
-      background: '#141414',
-      foreground: '#e5e7eb',
-      cursor: '#10b981',
-      cursorAccent: '#141414',
-      black: '#111827',
-      red: '#fb7185',
-      green: '#34d399',
-      yellow: '#fbbf24',
-      blue: '#60a5fa',
-      magenta: '#c084fc',
-      cyan: '#22d3ee',
-      white: '#e5e7eb',
-      brightBlack: '#6b7280',
-      brightRed: '#fda4af',
-      brightGreen: '#6ee7b7',
-      brightYellow: '#fde68a',
-      brightBlue: '#93c5fd',
-      brightMagenta: '#d8b4fe',
-      brightCyan: '#67e8f9',
-      brightWhite: '#ffffff'
-    }
+    theme: buildXtermTheme(themeTokensOrDefault())
   })
   fit = new FitAddon()
   term.loadAddon(fit)
@@ -177,9 +150,14 @@ onMounted(() => {
   })
   unregisterSearch = registerTerminalSearch(props.sessionId, {
     findNext: (query, incremental) =>
-      search?.findNext(query, { incremental, decorations: SEARCH_DECORATIONS }) ?? false,
+      search?.findNext(query, {
+        incremental,
+        decorations: buildSearchDecorations(themeTokensOrDefault())
+      }) ?? false,
     findPrevious: (query) =>
-      search?.findPrevious(query, { decorations: SEARCH_DECORATIONS }) ?? false,
+      search?.findPrevious(query, {
+        decorations: buildSearchDecorations(themeTokensOrDefault())
+      }) ?? false,
     clear: () => search?.clearDecorations()
   })
   term.open(container.value!)
@@ -235,6 +213,11 @@ onMounted(() => {
     updateHintPosition()
   })
   resizeObserver.observe(container.value!)
+
+  // 主题切换后刷新终端配色，连接与滚动内容不受影响
+  unsubTheme = onThemeChange((tokens) => {
+    if (term) term.options.theme = buildXtermTheme(tokens)
+  })
 })
 
 watch(
@@ -255,6 +238,7 @@ function onMouseUp(e: MouseEvent): void {
 onBeforeUnmount(() => {
   unsubData?.()
   unsubSelection?.()
+  unsubTheme?.()
   unregisterSearch?.()
   searchResultSub?.dispose()
   container.value?.removeEventListener('mouseup', onMouseUp)
@@ -326,13 +310,13 @@ defineExpose({ fit: safeFit })
   left: 12px;
   width: min(520px, calc(100% - 32px));
   overflow: hidden;
-  border: 1px solid rgba(229, 231, 235, 0.92);
-  border-radius: 8px;
-  background: rgba(18, 21, 33, 0.98);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.38);
+  border: 1px solid var(--tx-border-strong);
+  border-radius: var(--tx-radius-md);
+  background: var(--tx-overlay);
+  box-shadow: var(--tx-shadow-lg);
   pointer-events: none;
-  color: #f3f4f6;
-  font-size: 12px;
+  color: var(--tx-text);
+  font-size: var(--tx-font-sm);
 }
 .command-hints-list {
   max-height: 272px;
@@ -348,11 +332,11 @@ defineExpose({ fit: safeFit })
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .command-hint.selected {
-  background: rgba(52, 211, 153, 0.1);
+  background: var(--tx-accent-soft);
 }
 .command-hint-icon {
   width: 16px;
-  color: #fbbf24;
+  color: var(--tx-warning);
   font-size: 19px;
   line-height: 1;
 }
@@ -362,37 +346,37 @@ defineExpose({ fit: safeFit })
   gap: 10px;
   min-height: 52px;
   padding: 7px 12px;
-  border-top: 1px solid rgba(229, 231, 235, 0.9);
-  color: #d1d5db;
+  border-top: 1px solid var(--tx-border);
+  color: var(--tx-text-2);
 }
 .command-hints-description {
   flex: 1;
-  color: #34d399;
-  font-size: 13px;
+  color: var(--tx-accent);
+  font-size: var(--tx-font-md);
 }
 .command-hints-key {
   white-space: nowrap;
-  color: #d1d5db;
+  color: var(--tx-text-2);
 }
 .command-hints-settings {
-  color: #9ca3af;
+  color: var(--tx-text-3);
   font-size: 16px;
 }
 .ai-explain-btn {
   position: absolute;
   z-index: 8;
   padding: 4px 10px;
-  border: 1px solid color-mix(in srgb, var(--tx-green) 45%, transparent);
-  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--tx-accent) 45%, transparent);
+  border-radius: var(--tx-radius-sm);
   background: color-mix(in srgb, var(--tx-panel) 92%, transparent);
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
   font: inherit;
-  font-size: 11.5px;
+  font-size: var(--tx-font-xs);
   cursor: pointer;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--tx-shadow-md);
 }
 .ai-explain-btn:hover {
-  background: color-mix(in srgb, var(--tx-green) 18%, var(--tx-panel));
+  background: color-mix(in srgb, var(--tx-accent) 18%, var(--tx-panel));
   color: var(--tx-text);
 }
 </style>

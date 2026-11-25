@@ -3,13 +3,7 @@ import { Settings } from '@shared/types'
 import { applyUiSettings } from '../theme'
 import { setLang } from '../i18n'
 
-const UI_KEYS = [
-  'themeColor',
-  'backgroundColor',
-  'navColor',
-  'followSystemTheme',
-  'uiFont'
-] as const
+const UI_KEYS = ['themeColor', 'backgroundColor', 'navColor', 'themeMode', 'uiFont'] as const
 
 export const useSettingsStore = defineStore('settings', {
   state: () => ({

@@ -320,8 +320,8 @@ async function test(): Promise<void> {
 }
 
 .nav-item.active {
-  background: color-mix(in srgb, var(--tx-green) 14%, transparent);
-  color: var(--tx-green);
+  background: color-mix(in srgb, var(--tx-accent) 14%, transparent);
+  color: var(--tx-accent);
 }
 
 .conn-body {

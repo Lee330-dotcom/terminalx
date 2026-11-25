@@ -1,58 +1,74 @@
-/* 主题变量：浅色为默认值（:root），深色模式在 html.dark 覆盖。
-   applyBackgroundColor 按背景色深浅自动切换 html.dark class。 */
+/* 设计令牌兜底声明。
+   运行时由 `theme/index.ts` 依据用户设置统一覆写（颜色随模式派生，
+   Element Plus 变量一并对齐）。此处仅保留一份「深色优先」的静态兜底，
+   避免首帧闪白；样式实现一律引用 var(--tx-*)，不写死颜色。 */
 
 :root {
-  --tx-bg: #f4f5f6;
-  --tx-panel: #ffffff;
-  --tx-card: #ffffff;
-  --tx-hover: #eceff0;
-  --tx-fill: #f0f2f3;
-  --tx-border: #dde1e3;
-  --tx-border-strong: #c3c9cc;
-  --tx-nav: #ffffff;
-  --tx-green: #10b981;
-  --tx-green-hover: #059669;
-  --tx-text: rgba(0, 0, 0, 0.85);
-  --tx-text-2: rgba(0, 0, 0, 0.55);
-  --tx-text-3: rgba(0, 0, 0, 0.38);
-}
-
-html.dark {
+  /* 颜色 */
   --tx-bg: #0d0d0d;
-  --tx-panel: #111111;
-  --tx-card: #151515;
-  --tx-hover: #1d1d1d;
-  --tx-fill: #1a1a1a;
-  --tx-border: #262626;
-  --tx-border-strong: #3a3a3a;
-  --tx-nav: #121212;
-  --tx-green: #10b981;
-  --tx-green-hover: #34d399;
-  --tx-text: rgba(255, 255, 255, 0.85);
-  --tx-text-2: rgba(255, 255, 255, 0.55);
-  --tx-text-3: rgba(255, 255, 255, 0.35);
+  --tx-panel: #191919;
+  --tx-card: #202020;
+  --tx-fill: #171717;
+  --tx-hover: #282828;
+  --tx-border: #2c2c2c;
+  --tx-border-strong: #474747;
+  --tx-nav: #151515;
+  --tx-text: #ececec;
+  --tx-text-2: #a3a3a3;
+  --tx-text-3: #737373;
+  --tx-overlay: #1e1e1e;
+  --tx-shadow-color: rgba(0, 0, 0, 0.45);
+  --tx-accent: #10b981;
+  --tx-accent-hover: #34d399;
+  --tx-on-accent: #04231a;
+  --tx-accent-soft: rgba(16, 185, 129, 0.14);
+  --tx-accent-medium: rgba(16, 185, 129, 0.4);
+  --tx-success: #22c55e;
+  --tx-warning: #f59e0b;
+  --tx-danger: #ef4444;
+  --tx-info: #3b82f6;
+  --tx-success-soft: rgba(34, 197, 94, 0.16);
+  --tx-warning-soft: rgba(245, 158, 11, 0.16);
+  --tx-danger-soft: rgba(239, 68, 68, 0.16);
+  --tx-info-soft: rgba(59, 130, 246, 0.16);
 
-  --el-color-primary: #10b981;
-  --el-color-primary-light-3: #34d399;
-  --el-color-primary-light-5: #6ee7b7;
-  --el-color-primary-light-7: #a7f3d0;
-  --el-color-primary-light-8: #d1fae5;
-  --el-color-primary-light-9: #ecfdf5;
-  --el-color-primary-dark-2: #059669;
-  --el-bg-color: var(--tx-bg);
-  --el-bg-color-page: var(--tx-bg);
-  --el-bg-color-overlay: var(--tx-card);
-  --el-border-color: var(--tx-border-strong);
-  --el-border-color-light: var(--tx-border);
-  --el-border-color-lighter: var(--tx-border);
-  --el-fill-color: var(--tx-fill);
-  --el-fill-color-light: var(--tx-card);
-  --el-fill-color-lighter: var(--tx-panel);
-  --el-text-color-primary: var(--tx-text);
-  --el-text-color-regular: var(--tx-text);
-  --el-text-color-secondary: var(--tx-text-2);
-  --el-text-color-placeholder: var(--tx-text-3);
-  --el-mask-color: rgba(0, 0, 0, 0.65);
+  /* 圆角 */
+  --tx-radius-xs: 4px;
+  --tx-radius-sm: 6px;
+  --tx-radius-md: 8px;
+  --tx-radius-lg: 12px;
+  --tx-radius-xl: 16px;
+  --tx-radius-full: 999px;
+
+  /* 间距 */
+  --tx-space-1: 4px;
+  --tx-space-2: 8px;
+  --tx-space-3: 12px;
+  --tx-space-4: 16px;
+  --tx-space-5: 20px;
+  --tx-space-6: 24px;
+  --tx-space-7: 32px;
+  --tx-space-8: 40px;
+
+  /* 字号 */
+  --tx-font-xs: 11px;
+  --tx-font-sm: 12px;
+  --tx-font-md: 13px;
+  --tx-font-lg: 14px;
+  --tx-font-xl: 16px;
+  --tx-font-2xl: 20px;
+
+  /* 阴影 */
+  --tx-shadow-sm: 0 1px 2px var(--tx-shadow-color);
+  --tx-shadow-md: 0 4px 12px var(--tx-shadow-color);
+  --tx-shadow-lg: 0 12px 32px var(--tx-shadow-color);
+
+  /* 动效 */
+  --tx-duration-fast: 120ms;
+  --tx-duration-base: 180ms;
+  --tx-duration-slow: 260ms;
+  --tx-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --tx-ease-decelerate: cubic-bezier(0, 0, 0.2, 1);
 }
 
 *,

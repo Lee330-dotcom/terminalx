@@ -18,8 +18,10 @@ import {
   AiDiagnoseResult,
   AiDiagnoseVerdict,
   AppInfo,
-  Settings
+  Settings,
+  ThemeMode
 } from '@shared/types'
+import { isDarkColor } from '@shared/color'
 import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '../stores/settings'
 import { t, setLang, Lang } from '../i18n'
@@ -151,13 +153,19 @@ async function save(patch: Partial<Omit<Settings, 'mcpToken'>>): Promise<void> {
   }
 }
 
+/** 依据底色深浅推导外观模式：选了深色底就进深色模式，浅色底进浅色模式。 */
+function modeForColor(hex: string): ThemeMode {
+  return isDarkColor(hex) ? 'dark' : 'light'
+}
+
 function isPresetActive(p: ThemePreset): boolean {
   const s = settings.value
   if (!s) return false
   return (
     s.themeColor === p.themeColor &&
     s.backgroundColor === p.backgroundColor &&
-    s.navColor === p.navColor
+    s.navColor === p.navColor &&
+    s.themeMode === modeForColor(p.backgroundColor)
   )
 }
 
@@ -167,7 +175,7 @@ async function restoreDefault(): Promise<void> {
     backgroundColor: DEFAULT_THEME.backgroundColor,
     navColor: DEFAULT_THEME.navColor,
     uiFont: '',
-    followSystemTheme: false
+    themeMode: 'dark'
   })
   uiFont.value = ''
   ElMessage.success(t('theme.restored'))
@@ -473,6 +481,19 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
           <!-- 主题界面 -->
           <template v-if="activeSection === 'theme' && settings">
             <div class="settings-card">
+              <div class="card-title">{{ t('theme.appearance') }}</div>
+              <div class="setting-desc">{{ t('theme.appearanceDesc') }}</div>
+              <el-radio-group
+                :model-value="settings.themeMode"
+                @change="(v) => save({ themeMode: v as ThemeMode })"
+              >
+                <el-radio-button value="light">{{ t('theme.modeLight') }}</el-radio-button>
+                <el-radio-button value="dark">{{ t('theme.modeDark') }}</el-radio-button>
+                <el-radio-button value="system">{{ t('theme.modeSystem') }}</el-radio-button>
+              </el-radio-group>
+            </div>
+
+            <div class="settings-card">
               <div class="card-title">{{ t('theme.bgPresets') }}</div>
               <div class="setting-desc">{{ t('theme.bgPresetsDesc') }}</div>
               <div class="preset-grid">
@@ -486,7 +507,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                       themeColor: p.themeColor,
                       backgroundColor: p.backgroundColor,
                       navColor: p.navColor,
-                      followSystemTheme: false
+                      themeMode: modeForColor(p.backgroundColor)
                     })
                   "
                 >
@@ -533,7 +554,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                   class="swatch"
                   :class="{ active: settings.backgroundColor === c }"
                   :style="{ background: c }"
-                  @click="save({ backgroundColor: c })"
+                  @click="save({ backgroundColor: c, themeMode: modeForColor(c) })"
                 >
                   <el-icon v-if="settings.backgroundColor === c" :size="13" color="var(--tx-text)">
                     <Check />
@@ -541,7 +562,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                 </div>
                 <el-color-picker
                   :model-value="settings.backgroundColor"
-                  @change="(v) => v && save({ backgroundColor: v })"
+                  @change="(v) => v && save({ backgroundColor: v, themeMode: modeForColor(v) })"
                 />
                 <span class="color-value">{{ settings.backgroundColor }}</span>
               </div>
@@ -568,19 +589,6 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                   @change="(v) => v && save({ navColor: v })"
                 />
                 <span class="color-value">{{ settings.navColor }}</span>
-              </div>
-            </div>
-
-            <div class="settings-card">
-              <div class="setting-row">
-                <div>
-                  <div class="setting-label">{{ t('theme.followSystem') }}</div>
-                  <div class="setting-desc">{{ t('theme.followSystemDesc') }}</div>
-                </div>
-                <el-switch
-                  :model-value="settings.followSystemTheme"
-                  @change="(v) => save({ followSystemTheme: v as boolean })"
-                />
               </div>
             </div>
 
@@ -1053,7 +1061,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   align-items: center;
   justify-content: center;
   padding: 48px;
-  background: color-mix(in srgb, #000 42%, transparent);
+  background: var(--el-mask-color);
 }
 .settings-window {
   display: flex;
@@ -1064,7 +1072,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   border: 1px solid var(--tx-border);
   border-radius: 12px;
   background: var(--tx-bg);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--tx-shadow-lg);
 }
 .settings-sidebar {
   width: 220px;
@@ -1099,8 +1107,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   background: var(--tx-hover);
 }
 .nav-item.active {
-  background: color-mix(in srgb, var(--tx-green) 14%, transparent);
-  color: var(--tx-green-hover);
+  background: color-mix(in srgb, var(--tx-accent) 14%, transparent);
+  color: var(--tx-accent-hover);
   font-weight: 600;
 }
 .nav-hint {
@@ -1137,7 +1145,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   color: var(--tx-text-2);
 }
 .close-btn:hover {
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
 }
 .settings-scroll {
   flex: 1;
@@ -1169,7 +1177,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 }
 .tool-count {
   font-size: 12px;
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
   margin-bottom: 6px;
 }
 .setting-row {
@@ -1213,7 +1221,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   background: var(--tx-hover);
 }
 .preset-tile.active {
-  background: color-mix(in srgb, var(--tx-green) 12%, transparent);
+  background: color-mix(in srgb, var(--tx-accent) 12%, transparent);
 }
 .preset-preview {
   width: 44px;
@@ -1246,7 +1254,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   white-space: nowrap;
 }
 .preset-tile.active .preset-name {
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
 }
 .swatch-row {
   display: flex;
@@ -1269,7 +1277,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   border-color: var(--tx-border-strong);
 }
 .swatch.active {
-  border-color: var(--tx-green);
+  border-color: var(--tx-accent);
 }
 .color-value {
   font-size: 12px;
@@ -1335,7 +1343,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 .tool-name {
   font-family: ui-monospace, Menlo, monospace;
   font-size: 13px;
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
   flex-shrink: 0;
 }
 .tool-desc {
@@ -1360,7 +1368,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 .changelog-version {
   font-size: 13px;
   font-weight: 600;
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
 }
 .changelog-date {
   font-size: 12px;
@@ -1401,7 +1409,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   color: var(--tx-text-3);
 }
 .diagnose-hint.passed {
-  color: var(--tx-green-hover);
+  color: var(--tx-accent-hover);
 }
 .diagnose-head {
   display: flex;

@@ -14,7 +14,7 @@ const SETTINGS: Settings = {
   themeColor: '#10b981',
   backgroundColor: '#0d0d0d',
   navColor: '#141414',
-  followSystemTheme: false,
+  themeMode: 'dark',
   uiFont: '',
   windowOpacity: 100,
   uiScale: 100,
