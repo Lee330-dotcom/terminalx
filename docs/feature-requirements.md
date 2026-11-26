@@ -106,6 +106,7 @@ terminalX 是基于 Electron + Vue 3 的 SSH 桌面客户端，已具备：SSH �
 - **对标**：Tabby、SecureCRT。
 - **验收**：与 SSH 会话在同一标签/分屏体系内无差别使用。
 - **依赖**：A1 完成后实施。
+- **拆解状态**：**本地终端部分已有独立详细需求文档 `docs/feature-local-terminal.md`**（含 FR 拆解、技术方案、验收清单），实现以该文档为准；Serial/Telnet 尚未拆解。
 
 ### A10. 输入广播（P2）
 - **需求**：多选会话后开启广播模式，键盘输入同步下发到所有选中会话（iTerm2 broadcast input），广播时终端角标醒目提示。
