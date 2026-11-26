@@ -8,6 +8,7 @@ import {
   Connection,
   Download,
   Files,
+  Lock,
   MagicStick,
   Refresh,
   Search,
@@ -24,6 +25,7 @@ import {
 import { isDarkColor } from '@shared/color'
 import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '../stores/settings'
+import { useHostKeyStore } from '../stores/hostKeys'
 import { t, setLang, Lang } from '../i18n'
 import { DEFAULT_THEME, THEME_PRESETS, ThemePreset } from '../theme'
 
@@ -31,6 +33,7 @@ const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ 'update:visible': [boolean] }>()
 
 const settingsStore = useSettingsStore()
+const hostKeyStore = useHostKeyStore()
 const { settings } = storeToRefs(settingsStore)
 const appInfo = ref<AppInfo | null>(null)
 const activeSection = ref('theme')
@@ -42,6 +45,7 @@ const sections = [
   { id: 'update', key: 'settings.update', icon: Download },
   { id: 'ai', key: 'settings.ai', icon: MagicStick },
   { id: 'mcp', key: 'settings.mcp', icon: Connection },
+  { id: 'hostkey', key: 'hostKey.section', icon: Lock },
   { id: 'backup', key: 'settings.backup', icon: Files },
   { id: 'system', key: 'settings.system', icon: Setting }
 ]
@@ -420,7 +424,52 @@ watch(activeSection, (section) => {
   if (section === 'ai' && aiModelOptions.value.length === 0 && aiKeySet.value) {
     void loadModels(true)
   }
+  if (section === 'hostkey') {
+    void hostKeyStore.load()
+  }
 })
+
+/** 指纹信任时间的本地化展示。 */
+function formatTime(ts: number): string {
+  if (!ts) return '-'
+  const d = new Date(ts)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/** 忘记某主机的指纹：确认后删除记录，下次连接需要重新确认。 */
+async function forgetHostKey(host: string, port: number): Promise<void> {
+  try {
+    await ElMessageBox.confirm(t('hostKey.forgetConfirm', { host: `${host}:${port}` }), t('hostKey.forget'), {
+      type: 'warning',
+      confirmButtonText: t('hostKey.forget'),
+      cancelButtonText: t('common.cancel')
+    })
+  } catch {
+    return
+  }
+  await hostKeyStore.forget(host, port)
+}
+
+/** 导入 known_hosts 文件：交给主进程解析并合并到本地指纹库。 */
+async function importKnownHosts(): Promise<void> {
+  try {
+    const result = await hostKeyStore.importKnownHosts()
+    if (result === null) {
+      ElMessage.info(t('hostKey.importCancelled'))
+      return
+    }
+    ElMessage.success(
+      t('hostKey.imported', {
+        imported: result.imported,
+        updated: result.updated,
+        skipped: result.skipped
+      })
+    )
+  } catch (err) {
+    ElMessage.error(err instanceof Error ? err.message : String(err))
+  }
+}
 
 watch(
   () => props.visible,
@@ -969,6 +1018,38 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
             </div>
           </template>
 
+          <!-- 主机指纹 -->
+          <template v-if="activeSection === 'hostkey'">
+            <div class="settings-card">
+              <div class="card-title">{{ t('hostKey.section') }}</div>
+              <div class="setting-desc">{{ t('hostKey.sectionDesc') }}</div>
+              <div style="margin-top: 12px">
+                <el-button @click="importKnownHosts">{{ t('hostKey.import') }}</el-button>
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div v-if="hostKeyStore.records.length === 0" class="setting-desc">
+                {{ t('hostKey.empty') }}
+              </div>
+              <div v-for="record in hostKeyStore.records" :key="`${record.host}:${record.port}`" class="setting-row">
+                <div style="min-width: 0">
+                  <div class="setting-label">
+                    {{ record.host }}:{{ record.port }}
+                    <span style="color: var(--tx-text-3); font-weight: 400">（{{ record.keyType }}）</span>
+                  </div>
+                  <div class="setting-desc hostkey-fp">{{ record.fingerprint }}</div>
+                  <div class="setting-desc">
+                    {{ t('hostKey.addedAt') }}: {{ formatTime(record.addedAt) }}
+                  </div>
+                </div>
+                <el-button size="small" @click="forgetHostKey(record.host, record.port)">
+                  {{ t('hostKey.forget') }}
+                </el-button>
+              </div>
+            </div>
+          </template>
+
           <!-- 系统配置 -->
           <template v-if="activeSection === 'system' && settings">
             <div class="settings-card">
@@ -1201,6 +1282,10 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   font-size: 12px;
   color: var(--tx-text-3);
   margin-top: 3px;
+}
+.hostkey-fp {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
 }
 .preset-grid {
   display: grid;

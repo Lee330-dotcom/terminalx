@@ -39,6 +39,28 @@ const zhCN: Record<string, string> = {
   'ws.aiSummaryDesc':
     '读取当前窗格最近 300 行输出，由 AI 总结关键信息、异常与下一步建议（只读，不执行命令）',
 
+  // 主机指纹
+  'hostKey.newTitle': '确认主机身份',
+  'hostKey.newIntro': '这是第一次连接该主机，请核对指纹后再决定是否信任。',
+  'hostKey.changedTitle': '主机指纹已变更',
+  'hostKey.changedWarning': '该主机的指纹与已记录的指纹不一致，可能遭到中间人攻击。请确认你确实更换过主机密钥，否则请拒绝连接。',
+  'hostKey.host': '主机',
+  'hostKey.keyType': '密钥类型',
+  'hostKey.fingerprint': '本次指纹',
+  'hostKey.storedFingerprint': '已记录指纹',
+  'hostKey.trust': '信任并继续',
+  'hostKey.acceptChanged': '仍要继续',
+  'hostKey.reject': '拒绝并断开',
+  'hostKey.section': '主机指纹',
+  'hostKey.sectionDesc': '已信任的主机公钥指纹；指纹变更时会强制告警确认。',
+  'hostKey.empty': '尚未信任任何主机',
+  'hostKey.forget': '忘记',
+  'hostKey.forgetConfirm': '忘记 {host} 的指纹后，下次连接需要重新确认。',
+  'hostKey.import': '导入 known_hosts',
+  'hostKey.imported': '导入完成：新增 {imported} 条，覆盖 {updated} 条，跳过 {skipped} 条',
+  'hostKey.importCancelled': '已取消导入',
+  'hostKey.addedAt': '信任时间',
+
   // 顶部栏
   'app.newConnection': '新建连接',
   'app.import': '导入',
@@ -388,6 +410,28 @@ const enUS: Record<string, string> = {
   'ws.aiSummary': 'AI Summary',
   'ws.aiSummaryDesc':
     'Reads the latest 300 lines of the focused pane and asks AI to summarise key points, anomalies and next steps (read-only, no commands are executed)',
+
+  // Host keys
+  'hostKey.newTitle': 'Confirm Host Identity',
+  'hostKey.newIntro': 'This is the first connection to this host. Verify the fingerprint before trusting it.',
+  'hostKey.changedTitle': 'Host Fingerprint Changed',
+  'hostKey.changedWarning': 'The host fingerprint differs from the recorded one, which may indicate a man-in-the-middle attack. Continue only if you replaced the host key on purpose.',
+  'hostKey.host': 'Host',
+  'hostKey.keyType': 'Key Type',
+  'hostKey.fingerprint': 'Presented Fingerprint',
+  'hostKey.storedFingerprint': 'Recorded Fingerprint',
+  'hostKey.trust': 'Trust and Continue',
+  'hostKey.acceptChanged': 'Continue Anyway',
+  'hostKey.reject': 'Reject and Disconnect',
+  'hostKey.section': 'Host Fingerprints',
+  'hostKey.sectionDesc': 'Trusted host public key fingerprints; fingerprint changes always require explicit confirmation.',
+  'hostKey.empty': 'No trusted host yet',
+  'hostKey.forget': 'Forget',
+  'hostKey.forgetConfirm': 'After forgetting the fingerprint of {host}, the next connection needs a new confirmation.',
+  'hostKey.import': 'Import known_hosts',
+  'hostKey.imported': 'Imported: {imported} added, {updated} updated, {skipped} skipped',
+  'hostKey.importCancelled': 'Import cancelled',
+  'hostKey.addedAt': 'Trusted At',
 
   'app.newConnection': 'New Connection',
   'app.import': 'Import',

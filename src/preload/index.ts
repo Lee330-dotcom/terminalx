@@ -5,6 +5,7 @@ import {
   AiChatEvent,
   AiChunkEvent,
   AiDoneEvent,
+  HostKeyPrompt,
   IpcChannels,
   RendererApi,
   SessionDataEvent,
@@ -104,7 +105,17 @@ const api: RendererApi = {
   openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
   openDirectoryDialog: () => ipcRenderer.invoke('dialog:open-directory'),
   importPreview: (request) => ipcRenderer.invoke(IpcChannels.importPreview, request),
-  importApply: (request) => ipcRenderer.invoke(IpcChannels.importApply, request)
+  importApply: (request) => ipcRenderer.invoke(IpcChannels.importApply, request),
+  listHostKeys: () => ipcRenderer.invoke(IpcChannels.hostKeyList),
+  forgetHostKey: (host, port) => ipcRenderer.invoke(IpcChannels.hostKeyForget, host, port),
+  importKnownHosts: (filePath) => ipcRenderer.invoke(IpcChannels.hostKeyImport, filePath),
+  respondHostKey: (requestId, accept) =>
+    ipcRenderer.invoke(IpcChannels.hostKeyRespond, requestId, accept),
+  onHostKeyPrompt: (cb): (() => void) => {
+    const listener: (e: IpcRendererEvent, ev: HostKeyPrompt) => void = (_e, ev) => cb(ev)
+    ipcRenderer.on(IpcChannels.evHostKeyPrompt, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.evHostKeyPrompt, listener)
+  }
 }
 
 if (process.contextIsolated) {

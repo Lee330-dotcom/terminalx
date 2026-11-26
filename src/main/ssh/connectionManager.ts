@@ -1,5 +1,6 @@
-import { Client, ConnectConfig, ClientChannel } from 'ssh2'
+import { Client, ClientChannel } from 'ssh2'
 import { ExecCommandResult } from '@shared/types'
+import { SshConnectConfig } from './config'
 
 interface ManagedClient {
   client: Client
@@ -56,18 +57,22 @@ export class ConnectionManager {
   private readonly idleDestroyMs: number
 
   constructor(
-    private readonly buildConfig: (connectionId: string) => Promise<ConnectConfig>,
+    private readonly buildConfig: (connectionId: string) => Promise<SshConnectConfig>,
     opts: { idleDestroyMs?: number } = {}
   ) {
     this.idleDestroyMs = opts.idleDestroyMs ?? IDLE_DESTROY_MS
   }
 
-  private connect(config: ConnectConfig): Promise<Client> {
+  private connect(config: SshConnectConfig): Promise<Client> {
     return new Promise((resolvePromise, reject) => {
       const client = new Client()
-      client.once('error', reject)
+      const onError = (err: Error): void => {
+        // 主机指纹被拒时 ssh2 只给通用握手错误，这里换成具体原因
+        reject(config.hostKeyFailure?.() ?? err)
+      }
+      client.once('error', onError)
       client.once('ready', () => {
-        client.removeListener('error', reject)
+        client.removeListener('error', onError)
         resolvePromise(client)
       })
       client.connect(config)
@@ -250,12 +255,15 @@ export async function openShell(
 }
 
 /** 一次性连接测试：成功即断开并 resolve，失败 reject（由调用方翻译错误）。 */
-export async function testConnect(config: ConnectConfig): Promise<void> {
+export async function testConnect(config: SshConnectConfig): Promise<void> {
   const client = new Client()
   await new Promise<void>((resolvePromise, reject) => {
-    client.once('error', reject)
+    const onError = (err: Error): void => {
+      reject(config.hostKeyFailure?.() ?? err)
+    }
+    client.once('error', onError)
     client.once('ready', () => {
-      client.removeListener('error', reject)
+      client.removeListener('error', onError)
       resolvePromise()
     })
     client.connect(config)

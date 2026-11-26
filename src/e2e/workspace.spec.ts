@@ -5,6 +5,7 @@ import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import puppeteer, { Browser, Page } from 'puppeteer-core'
 import { startTestSshServer, TestSshServer } from '../main/ssh/__tests__/testSshServer'
+import { autoTrustHostKeys, waitNoHostKeyDialog } from './hostKeyHelper'
 
 const DEBUG_PORT = 9341
 const ELECTRON_BIN = resolve('node_modules/electron/dist/Electron.app/Contents/MacOS/Electron')
@@ -95,6 +96,7 @@ async function getPage(): Promise<Page> {
   const page = pages[0]
   await page.bringToFront()
   focusWindow(electron?.pid ?? 0)
+  await autoTrustHostKeys(page)
   return page
 }
 
@@ -175,6 +177,8 @@ async function waitWelcome(page: Page, idx = 0): Promise<void> {
       { timeout: 20000, polling: 300 },
       idx
     )
+    // 指纹弹窗的遮罩会挡住终端交互，等它彻底关闭
+    await waitNoHostKeyDialog(page)
   } catch (err) {
     const diag = await page.evaluate(async () => {
       const panel = Array.from(document.querySelectorAll('.tab-panel')).find(

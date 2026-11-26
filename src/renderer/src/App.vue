@@ -25,12 +25,14 @@ import SftpPanel from './components/SftpPanel.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import AiPanel from './components/AiPanel.vue'
 import ImportDialog from './components/ImportDialog.vue'
+import HostKeyDialog from './components/HostKeyDialog.vue'
 import WorkspaceGrid from './components/workspace/WorkspaceGrid.vue'
 import { useWorkspaceStore, PaneState } from './stores/workspace'
 import { useAiStore } from './stores/ai'
 import { useAiChatStore } from './stores/aiChat'
 import { useAppStore } from './stores/app'
 import { useSettingsStore } from './stores/settings'
+import { useHostKeyStore } from './stores/hostKeys'
 import { t, currentLang } from './i18n'
 import { MAX_PANES_PER_TAB } from './workspace/splitTree'
 import {
@@ -43,6 +45,7 @@ import en from 'element-plus/es/locale/lang/en'
 import type { ConnectionFilter } from './filter'
 
 const workspaceStore = useWorkspaceStore()
+const hostKeyStore = useHostKeyStore()
 const appStore = useAppStore()
 const settingsStore = useSettingsStore()
 const aiStore = useAiStore()
@@ -329,6 +332,7 @@ onMounted(() => {
   void aiStore.refreshStatus()
   aiChatStore.ensureListeners()
   workspaceStore.ensureStatusListener()
+  hostKeyStore.ensurePromptListener()
   document.addEventListener('keydown', onGlobalKeydown)
 })
 
@@ -401,7 +405,7 @@ onUnmounted(() => {
               <span class="ai-entry-label">AI</span>
             </el-button>
           </el-tooltip>
-          <el-button class="gear-btn" text circle @click="settingsVisible = true">
+          <el-button class="gear-btn settings-entry-btn" text circle @click="settingsVisible = true">
             <el-icon :size="16"><Setting /></el-icon>
           </el-button>
         </div>
@@ -625,6 +629,7 @@ onUnmounted(() => {
       />
       <SettingsPanel v-model:visible="settingsVisible" />
       <ImportDialog v-model:visible="importVisible" @imported="appStore.refresh()" />
+      <HostKeyDialog />
       <CommandPalette
         :visible="cmdPaletteVisible"
         :session-id="workspaceStore.activeSessionId ?? ''"

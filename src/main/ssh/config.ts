@@ -1,9 +1,26 @@
 import { promises as fs } from 'fs'
 import { homedir } from 'os'
 import { join, resolve } from 'path'
-import { ConnectConfig } from 'ssh2'
+import { ConnectConfig, HostVerifier } from 'ssh2'
 import { ConnectionInput, ConnectionMeta } from '@shared/types'
 import { SecretPayload } from '../store/credentialVault'
+
+/** 携带主机指纹校验信息的连接配置。 */
+export interface SshConnectConfig extends ConnectConfig {
+  /**
+   * 指纹校验失败的具体原因读取器。
+   * ssh2 只会给出通用的 `Host denied (verification failed)`，
+   * 这里用读取器把原因换成用户能看懂的文案。
+   */
+  hostKeyFailure?: () => Error | undefined
+}
+
+export interface SshConnectOptions {
+  /** ssh2 主机公钥校验器（指纹闸门注入） */
+  hostVerifier?: HostVerifier
+  /** 指纹校验失败原因的读取器 */
+  hostKeyFailure?: () => Error | undefined
+}
 
 function expandHome(p: string): string {
   if (p === '~') return homedir()
@@ -13,9 +30,10 @@ function expandHome(p: string): string {
 
 export async function buildConnectConfig(
   meta: ConnectionMeta,
-  secret: SecretPayload | null
-): Promise<ConnectConfig> {
-  const config: ConnectConfig = {
+  secret: SecretPayload | null,
+  options: SshConnectOptions = {}
+): Promise<SshConnectConfig> {
+  const config: SshConnectConfig = {
     host: meta.host,
     port: meta.port,
     username: meta.username,
@@ -23,6 +41,8 @@ export async function buildConnectConfig(
     keepaliveInterval: 30000,
     keepaliveCountMax: 3
   }
+  if (options.hostVerifier) config.hostVerifier = options.hostVerifier
+  if (options.hostKeyFailure) config.hostKeyFailure = options.hostKeyFailure
   if (meta.authType === 'password') {
     if (!secret?.password) throw new Error('缺少密码，请编辑连接补全凭据')
     config.password = secret.password
@@ -42,8 +62,9 @@ export async function buildConnectConfig(
 /** 从未保存的表单输入构建连接配置；凭据字段留空时回退到已保存凭据（编辑场景）。 */
 export async function buildConnectConfigFromInput(
   input: ConnectionInput,
-  fallback: SecretPayload | null
-): Promise<ConnectConfig> {
+  fallback: SecretPayload | null,
+  options: SshConnectOptions = {}
+): Promise<SshConnectConfig> {
   const secret: SecretPayload = {}
   if (input.authType === 'password') {
     if (input.password) secret.password = input.password
@@ -71,5 +92,5 @@ export async function buildConnectConfigFromInput(
     updatedAt: 0,
     timeoutMs: input.timeoutMs ?? null
   }
-  return buildConnectConfig(meta, secret)
+  return buildConnectConfig(meta, secret, options)
 }

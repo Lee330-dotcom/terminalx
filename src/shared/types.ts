@@ -356,6 +356,40 @@ export interface ImportApplyRequest {
   groupId?: string | null
 }
 
+// ---- 主机指纹 ----
+
+/** 已信任的主机公钥指纹 */
+export interface HostKeyRecord {
+  host: string
+  port: number
+  /** `SHA256:` + base64(SHA256(公钥 blob)) */
+  fingerprint: string
+  /** ssh-ed25519 / ssh-rsa 等 */
+  keyType: string
+  addedAt: number
+  lastSeenAt: number
+}
+
+/** 主机指纹确认请求（主进程 → 渲染进程） */
+export interface HostKeyPrompt {
+  requestId: string
+  host: string
+  port: number
+  fingerprint: string
+  keyType: string
+  /** 指纹库中已记录的指纹（status 为 changed 时有值） */
+  storedFingerprint?: string
+  /** new：首次见到的主机；changed：指纹与记录不一致 */
+  status: 'new' | 'changed'
+}
+
+/** known_hosts 导入结果 */
+export interface HostKeyImportResult {
+  imported: number
+  updated: number
+  skipped: number
+}
+
 // ---- IPC 通道 ----
 
 export const IpcChannels = {
@@ -407,6 +441,10 @@ export const IpcChannels = {
   aiChatReset: 'ai:chat-reset',
   importPreview: 'import:preview',
   importApply: 'import:apply',
+  hostKeyList: 'host-key:list',
+  hostKeyForget: 'host-key:forget',
+  hostKeyImport: 'host-key:import',
+  hostKeyRespond: 'host-key:respond',
   // 主进程 -> 渲染进程事件
   evAiChunk: 'ev:ai:chunk',
   evAiDone: 'ev:ai:done',
@@ -414,7 +452,8 @@ export const IpcChannels = {
   evSessionData: 'ev:session:data',
   evSessionStatus: 'ev:session:status',
   evTransferProgress: 'ev:transfer:progress',
-  evTransferDone: 'ev:transfer:done'
+  evTransferDone: 'ev:transfer:done',
+  evHostKeyPrompt: 'ev:host-key:prompt'
 } as const
 
 export interface SessionDataEvent {
@@ -506,4 +545,14 @@ export interface RendererApi {
   openDirectoryDialog(): Promise<string | null>
   importPreview(request: ImportPreviewRequest): Promise<ImportPreview>
   importApply(request: ImportApplyRequest): Promise<ImportResult>
+  /** 已信任的主机指纹列表 */
+  listHostKeys(): Promise<HostKeyRecord[]>
+  /** 忘记某台主机的指纹 */
+  forgetHostKey(host: string, port: number): Promise<boolean>
+  /** 导入 OpenSSH known_hosts；不传路径时弹出文件选择框 */
+  importKnownHosts(filePath?: string): Promise<HostKeyImportResult | null>
+  /** 应答一次主机指纹确认 */
+  respondHostKey(requestId: string, accept: boolean): Promise<boolean>
+  /** 订阅主机指纹确认请求 */
+  onHostKeyPrompt(cb: (prompt: HostKeyPrompt) => void): () => void
 }

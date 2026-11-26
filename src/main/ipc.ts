@@ -14,6 +14,7 @@ import { AppContext } from './appContext'
 import { probeTargets } from './ssh/latencyProbe'
 import { describeSshError, testConnect } from './ssh/connectionManager'
 import { buildConnectConfigFromInput } from './ssh/config'
+import { parseKnownHosts } from './ssh/hostKeyUtils'
 import { applySystemSettings, applyWindowUi } from './uiSettings'
 import { buildPreview, toConnectionInputs } from './import/importService'
 
@@ -41,7 +42,11 @@ export function registerIpcHandlers(ctx: AppContext): void {
     const started = Date.now()
     try {
       const fallback = existingId ? await ctx.connections.getSecret(existingId) : null
-      const config = await buildConnectConfigFromInput(input, fallback)
+      const config = await buildConnectConfigFromInput(
+        input,
+        fallback,
+        ctx.hostKeyOptions(input.host, input.port)
+      )
       await testConnect(config)
       return { ok: true, durationMs: Date.now() - started }
     } catch (err) {
@@ -174,6 +179,34 @@ export function registerIpcHandlers(ctx: AppContext): void {
     ctx.sftp.download(connectionId, remotePath, localPath)
   )
   ipcMain.handle(IpcChannels.sftpCancel, (_e, transferId) => ctx.sftp.cancel(transferId))
+  // ---- 主机指纹 ----
+  ipcMain.handle(IpcChannels.hostKeyList, () => ctx.hostKeys.list())
+  ipcMain.handle(IpcChannels.hostKeyForget, (_e, host: string, port: number) =>
+    ctx.hostKeys.forget(host, port)
+  )
+  ipcMain.handle(IpcChannels.hostKeyImport, async (e, filePath?: string) => {
+    let target = filePath
+    if (!target) {
+      const win = BrowserWindow.fromWebContents(e.sender)
+      const opts = {
+        properties: ['openFile' as const],
+        filters: [{ name: 'known_hosts', extensions: ['txt', 'known_hosts'] }]
+      }
+      const result = win
+        ? await dialog.showOpenDialog(win, opts)
+        : await dialog.showOpenDialog(opts)
+      if (result.canceled || !result.filePaths[0]) return null
+      target = result.filePaths[0]
+    }
+    const content = await fs.readFile(target, 'utf-8')
+    const parsed = parseKnownHosts(content)
+    const result = await ctx.hostKeys.importRecords(parsed.entries)
+    return { ...result, skipped: parsed.skipped }
+  })
+  ipcMain.handle(IpcChannels.hostKeyRespond, (_e, requestId: string, accept: boolean) => {
+    ctx.hostKeyGate.respond(requestId, accept === true)
+    return true
+  })
 
   // ---- 文件对话框 ----
   ipcMain.handle('dialog:open-file', async (e) => {

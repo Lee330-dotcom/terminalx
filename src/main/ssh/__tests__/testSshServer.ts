@@ -29,6 +29,12 @@ export function startTestSshServer(): Promise<TestSshServer> {
       publicKeyEncoding: { type: 'spki', format: 'pem' }
     })
     const server = new Server({ hostKeys: [privateKey] }, (client: Connection) => {
+      // 客户端在握手阶段中断（例如拒绝主机指纹）时，ssh2 会通过协议对象抛
+      // KEY_EXCHANGE_FAILED；测试服务器忽略这类中断错误
+      const protocol = (client as unknown as { _protocol?: { on?: (e: string, cb: () => void) => void } })
+        ._protocol
+      protocol?.on?.('error', () => {})
+      client.on('error', () => {})
       client.on('authentication', (ctx) => {
         if (
           ctx.method === 'password' &&
