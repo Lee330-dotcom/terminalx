@@ -1,7 +1,8 @@
-import { ipcMain, dialog, BrowserWindow, app } from 'electron'
+import { ipcMain, dialog, BrowserWindow, app, shell } from 'electron'
 import { promises as fs } from 'fs'
 import {
   AiAnalysisRequest,
+  AiChatConversation,
   AiChatStartRequest,
   ConnectionInput,
   IpcChannels,
@@ -157,6 +158,14 @@ export function registerIpcHandlers(ctx: AppContext): void {
   ipcMain.on(IpcChannels.aiChatCancel, (_e, requestId: string) => ctx.agent.cancel(requestId))
   ipcMain.on(IpcChannels.aiChatReset, (_e, sessionId: string) => ctx.agent.reset(sessionId))
 
+  // ---- 助手对话历史 ----
+  ipcMain.handle(IpcChannels.aiChatHistoryList, () => ctx.aiChats.list())
+  ipcMain.handle(IpcChannels.aiChatHistorySave, (_e, conversation: AiChatConversation) =>
+    ctx.aiChats.saveConversation(conversation)
+  )
+  ipcMain.handle(IpcChannels.aiChatHistoryDelete, (_e, id: string) => ctx.aiChats.remove(id))
+  ipcMain.handle(IpcChannels.aiChatHistoryClear, () => ctx.aiChats.clear())
+
   // ---- SFTP ----
   ipcMain.handle(IpcChannels.sftpList, (_e, connectionId, path) =>
     ctx.sftp.list(connectionId, path)
@@ -231,6 +240,24 @@ export function registerIpcHandlers(ctx: AppContext): void {
   ipcMain.handle(IpcChannels.snippetGroupDelete, (_e, id: string) =>
     ctx.snippets.removeGroup(id)
   )
+
+  // ---- 传输记录 ----
+  ipcMain.handle(IpcChannels.transferRecordsList, () => ctx.transfers.list())
+  ipcMain.handle(IpcChannels.transferRecordsRemove, (_e, id: string) =>
+    ctx.transfers.remove(id)
+  )
+  ipcMain.handle(IpcChannels.transferRecordsClear, () => ctx.transfers.clear())
+  ipcMain.handle(IpcChannels.transferReveal, async (_e, localPath: string) => {
+    if (!localPath) return false
+    try {
+      await fs.access(localPath)
+    } catch {
+      // 文件已被移动或删除：不报错，只是不定位
+      return false
+    }
+    shell.showItemInFolder(localPath)
+    return true
+  })
 
   // ---- 文件对话框 ----
   ipcMain.handle('dialog:open-file', async (e) => {

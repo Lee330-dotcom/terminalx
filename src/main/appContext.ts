@@ -1,4 +1,5 @@
-import { join } from 'path'
+import { join, basename } from 'path'
+import { posix } from 'path'
 import { BrowserWindow } from 'electron'
 import { HostVerifier } from 'ssh2'
 import { IpcChannels } from '@shared/types'
@@ -7,6 +8,8 @@ import { CredentialVault } from './store/credentialVault'
 import { ConnectionStore } from './store/connectionStore'
 import { HostKeyStore } from './store/hostKeyStore'
 import { SnippetStore } from './store/snippetStore'
+import { TransferStore } from './store/transferStore'
+import { AiChatStore } from './store/aiChatStore'
 import { SafeStorageProtector } from './safeStorageProtector'
 import { ConnectionManager } from './ssh/connectionManager'
 import { SessionManager, SessionEventSink } from './ssh/sessionManager'
@@ -24,6 +27,8 @@ export class AppContext {
   readonly connections: ConnectionStore
   readonly hostKeys: HostKeyStore
   readonly snippets: SnippetStore
+  readonly transfers: TransferStore
+  readonly aiChats: AiChatStore
   readonly ssh: ConnectionManager
   readonly sessions: SessionManager
   readonly sftp: SftpService
@@ -41,6 +46,8 @@ export class AppContext {
     this.connections = new ConnectionStore(join(userDataDir, 'connections.json'), this.vault)
     this.hostKeys = new HostKeyStore(join(userDataDir, 'hostKeys.json'))
     this.snippets = new SnippetStore(join(userDataDir, 'snippets.json'))
+    this.transfers = new TransferStore(join(userDataDir, 'transfers.json'))
+    this.aiChats = new AiChatStore(join(userDataDir, 'ai-chats.json'))
 
     this.hostKeyGate = new HostKeyGate(this.hostKeys, (request) => {
       for (const win of BrowserWindow.getAllWindows()) {
@@ -77,15 +84,36 @@ export class AppContext {
     })
 
     const transferSink: TransferEventSink = {
+      emitStart: (ev) => {
+        for (const win of BrowserWindow.getAllWindows()) {
+          win.webContents.send(IpcChannels.evTransferStart, ev)
+        }
+        // 传输留痕：入队即落一条记录，失败/取消也能在历史里看到
+        void this.transfers.recordStart({
+          id: ev.transferId,
+          direction: ev.direction,
+          name:
+            ev.direction === 'download' ? basename(ev.localPath) : posix.basename(ev.remotePath),
+          remotePath: ev.remotePath,
+          localPath: ev.localPath,
+          transferred: 0,
+          total: 0,
+          status: 'running',
+          startedAt: ev.startedAt
+        })
+      },
       emitProgress: (ev) => {
         for (const win of BrowserWindow.getAllWindows()) {
           win.webContents.send(IpcChannels.evTransferProgress, ev)
         }
+        void this.transfers.recordProgress(ev.transferId, ev.transferred, ev.total)
       },
       emitDone: (ev) => {
         for (const win of BrowserWindow.getAllWindows()) {
           win.webContents.send(IpcChannels.evTransferDone, ev)
         }
+        const status = ev.ok ? 'done' : ev.error === '已取消' ? 'canceled' : 'error'
+        void this.transfers.recordFinish(ev.transferId, status, ev.error)
       }
     }
     const searchSink: SearchEventSink = {

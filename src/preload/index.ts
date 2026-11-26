@@ -12,7 +12,8 @@ import {
   SessionStatusEvent,
   SftpSearchEvent,
   TransferProgressEvent,
-  TransferDoneEvent
+  TransferDoneEvent,
+  TransferStartEvent
 } from '../shared/types'
 
 const api: RendererApi = {
@@ -79,6 +80,10 @@ const api: RendererApi = {
     ipcRenderer.on(IpcChannels.evAiChat, listener)
     return () => ipcRenderer.removeListener(IpcChannels.evAiChat, listener)
   },
+  listAiChats: () => ipcRenderer.invoke(IpcChannels.aiChatHistoryList),
+  saveAiChat: (conversation) => ipcRenderer.invoke(IpcChannels.aiChatHistorySave, conversation),
+  deleteAiChat: (id) => ipcRenderer.invoke(IpcChannels.aiChatHistoryDelete, id),
+  clearAiChats: () => ipcRenderer.invoke(IpcChannels.aiChatHistoryClear),
   sftpList: (connectionId, path) => ipcRenderer.invoke(IpcChannels.sftpList, connectionId, path),
   sftpMkdir: (connectionId, path) => ipcRenderer.invoke(IpcChannels.sftpMkdir, connectionId, path),
   sftpDelete: (connectionId, path) =>
@@ -95,10 +100,19 @@ const api: RendererApi = {
   sftpSearch: (connectionId, root, keyword) =>
     ipcRenderer.invoke(IpcChannels.sftpSearch, connectionId, root, keyword),
   sftpSearchCancel: (searchId) => ipcRenderer.invoke(IpcChannels.sftpSearchCancel, searchId),
+  listTransferRecords: () => ipcRenderer.invoke(IpcChannels.transferRecordsList),
+  removeTransferRecord: (id) => ipcRenderer.invoke(IpcChannels.transferRecordsRemove, id),
+  clearTransferRecords: () => ipcRenderer.invoke(IpcChannels.transferRecordsClear),
+  revealTransferFile: (localPath) => ipcRenderer.invoke(IpcChannels.transferReveal, localPath),
   onSftpSearch: (cb): (() => void) => {
     const listener: (e: IpcRendererEvent, ev: SftpSearchEvent) => void = (_e, ev) => cb(ev)
     ipcRenderer.on(IpcChannels.evSftpSearch, listener)
     return () => ipcRenderer.removeListener(IpcChannels.evSftpSearch, listener)
+  },
+  onTransferStart: (cb): (() => void) => {
+    const listener: (e: IpcRendererEvent, ev: TransferStartEvent) => void = (_e, ev) => cb(ev)
+    ipcRenderer.on(IpcChannels.evTransferStart, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.evTransferStart, listener)
   },
   onTransferProgress: (cb): (() => void) => {
     const listener: (e: IpcRendererEvent, ev: TransferProgressEvent) => void = (_e, ev) => cb(ev)

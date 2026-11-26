@@ -257,6 +257,29 @@ export interface AppInfo {
   platform: string
 }
 
+/** AI 助手对话消息：时间线项的持久化子集（只保留语义字段）。 */
+export interface AiChatMessage {
+  id: string
+  role: 'user' | 'assistant' | 'notice' | 'tool'
+  text?: string
+  command?: string
+  purpose?: string
+  risk?: CommandRiskLevel
+  status?: string
+  error?: string
+  result?: AiChatToolResult
+}
+
+/** 一段助手对话：可持久化、可回看。 */
+export interface AiChatConversation {
+  id: string
+  title: string
+  connectionName?: string
+  createdAt: number
+  updatedAt: number
+  messages: AiChatMessage[]
+}
+
 export type SessionStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
 
 export interface SessionInfo {
@@ -493,6 +516,10 @@ export const IpcChannels = {
   sftpCancel: 'sftp:cancel',
   sftpSearch: 'sftp:search',
   sftpSearchCancel: 'sftp:search-cancel',
+  transferRecordsList: 'transfer:records-list',
+  transferRecordsRemove: 'transfer:records-remove',
+  transferRecordsClear: 'transfer:records-clear',
+  transferReveal: 'transfer:reveal',
   aiStatus: 'ai:status',
   aiAnalyze: 'ai:analyze',
   aiCancel: 'ai:cancel',
@@ -504,6 +531,10 @@ export const IpcChannels = {
   aiChatApprove: 'ai:chat-approve',
   aiChatCancel: 'ai:chat-cancel',
   aiChatReset: 'ai:chat-reset',
+  aiChatHistoryList: 'ai:chat-history-list',
+  aiChatHistorySave: 'ai:chat-history-save',
+  aiChatHistoryDelete: 'ai:chat-history-delete',
+  aiChatHistoryClear: 'ai:chat-history-clear',
   importPreview: 'import:preview',
   importApply: 'import:apply',
   hostKeyList: 'host-key:list',
@@ -524,6 +555,7 @@ export const IpcChannels = {
   evSessionStatus: 'ev:session:status',
   evTransferProgress: 'ev:transfer:progress',
   evTransferDone: 'ev:transfer:done',
+  evTransferStart: 'ev:transfer:start',
   evHostKeyPrompt: 'ev:host-key:prompt',
   evSftpSearch: 'ev:sftp:search'
 } as const
@@ -552,6 +584,30 @@ export interface TransferDoneEvent {
   transferId: string
   ok: boolean
   error?: string
+}
+
+/** 传输入队时广播：保证渲染进程在收到进度/完成事件前条目已存在。 */
+export interface TransferStartEvent {
+  transferId: string
+  direction: 'upload' | 'download'
+  remotePath: string
+  localPath: string
+  startedAt: number
+}
+
+/** 传输记录：落盘留痕，可跨会话回看。 */
+export interface TransferRecord {
+  id: string
+  direction: 'upload' | 'download'
+  name: string
+  remotePath: string
+  localPath: string
+  transferred: number
+  total: number
+  status: 'running' | 'done' | 'error' | 'canceled'
+  error?: string
+  startedAt: number
+  finishedAt?: number
 }
 
 // ---- preload 暴露给渲染进程的 API 面 ----
@@ -601,6 +657,14 @@ export interface RendererApi {
   aiChatCancel(requestId: string): void
   aiChatReset(sessionId: string): void
   onAiChatEvent(cb: (ev: AiChatEvent) => void): () => void
+  /** 助手对话历史 */
+  listAiChats(): Promise<AiChatConversation[]>
+  /** 保存（覆盖）一段助手对话 */
+  saveAiChat(conversation: AiChatConversation): Promise<void>
+  /** 删除一段助手对话 */
+  deleteAiChat(id: string): Promise<void>
+  /** 清空助手对话历史 */
+  clearAiChats(): Promise<void>
   sftpList(connectionId: string, path: string): Promise<SftpListResult>
   sftpMkdir(connectionId: string, path: string): Promise<void>
   sftpDelete(connectionId: string, path: string): Promise<void>
@@ -613,8 +677,17 @@ export interface RendererApi {
   sftpSearch(connectionId: string, root: string, keyword: string): Promise<string>
   sftpSearchCancel(searchId: string): Promise<void>
   onSftpSearch(cb: (ev: SftpSearchEvent) => void): () => void
+  onTransferStart(cb: (ev: TransferStartEvent) => void): () => void
   onTransferProgress(cb: (ev: TransferProgressEvent) => void): () => void
   onTransferDone(cb: (ev: TransferDoneEvent) => void): () => void
+  /** 历史传输记录（下载/上传留痕） */
+  listTransferRecords(): Promise<TransferRecord[]>
+  /** 删除一条传输记录 */
+  removeTransferRecord(id: string): Promise<void>
+  /** 清空全部传输记录 */
+  clearTransferRecords(): Promise<void>
+  /** 在系统文件管理器中定位本地文件；文件不存在时返回 false */
+  revealTransferFile(localPath: string): Promise<boolean>
   /** 拖拽文件的真实磁盘路径（webUtils.getPathForFile）。 */
   getPathForFile(file: unknown): string
   openFileDialog(): Promise<string | null>
