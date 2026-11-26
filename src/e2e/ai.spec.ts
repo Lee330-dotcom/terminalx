@@ -949,3 +949,164 @@ describe('AI 全自动助手（真实 Electron + mock OpenAI tools）', () => {
     expect(ssh.shellInput().length).toBe(inputBefore)
   })
 })
+
+describe('AI 对话历史（真实 Electron）', () => {
+  it('对话结束后自动留痕，历史抽屉可回看、可删除', async () => {
+    const page = await getPage()
+    // 清掉前面用例留下的历史，让本例的断言是确定的
+    await page.evaluate(async () => {
+      // @ts-ignore window.api 由 preload 注入
+      await (window.api as import('@shared/types').RendererApi).clearAiChats()
+    })
+    await page.evaluate(
+      ({ port }) =>
+        // @ts-ignore window.api 由 preload 注入
+        (window.api as import('@shared/types').RendererApi).createConnection({
+          name: 'ai-history-ui',
+          groupId: null,
+          host: '127.0.0.1',
+          port,
+          username: 'tester',
+          authType: 'password',
+          password: 'test-pass'
+        }),
+      { port: ssh.port }
+    )
+    await page.evaluate(
+      async ({ baseUrl }) => {
+        // @ts-ignore window.api 由 preload 注入
+        const api = window.api as import('@shared/types').RendererApi
+        await api.updateSettings({
+          aiBaseUrl: baseUrl,
+          aiModel: 'mock-model',
+          aiAutoExecute: true
+        })
+        await api.setAiKey('sk-e2e-key')
+      },
+      { baseUrl: `http://127.0.0.1:${mock.port}/v1` }
+    )
+    await page.reload()
+    await page.waitForFunction(() => document.body.textContent?.includes('ai-history-ui'), {
+      timeout: 15000
+    })
+    await page.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('.conn-table .row'))
+      const target = rows.find(
+        (el) => el.querySelector('.conn-name')?.textContent?.trim() === 'ai-history-ui'
+      )
+      if (!target) throw new Error('connection row not found')
+      target.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))
+    })
+    await page.waitForFunction(
+      () => document.querySelector('.xterm-rows')?.textContent?.includes('welcome to test server'),
+      { timeout: 15000 }
+    )
+    await waitNoHostKeyDialog(page)
+
+    await page.click('.ai-entry-btn')
+    await page.evaluate(() => {
+      const tab = Array.from(document.querySelectorAll('.ai-tab')).find(
+        (el) => el.textContent?.trim() === '助手'
+      )
+      if (!tab || (tab as HTMLButtonElement).disabled) throw new Error('助手页签不可用')
+      ;(tab as HTMLElement).click()
+    })
+    await page.waitForSelector('.chat-composer textarea:not([disabled])', { timeout: 15000 })
+    await page.type('.chat-composer textarea', '看看系统运行了多久')
+    await page.evaluate(() => {
+      const button = Array.from(document.querySelectorAll('.chat-composer button')).find((b) =>
+        b.textContent?.includes('发送')
+      )
+      if (!button) throw new Error('发送 button not found')
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    })
+    await page.waitForFunction(
+      () => {
+        const items = document.querySelectorAll('.chat-msg.assistant')
+        return (items[items.length - 1]?.textContent ?? '').includes('系统运行正常。')
+      },
+      { timeout: 20000 }
+    )
+
+    // 主进程已持久化这段对话
+    await page.waitForFunction(
+      async () => {
+        // @ts-ignore window.api 由 preload 注入
+        const list = await (window.api as import('@shared/types').RendererApi).listAiChats()
+        return list.length === 1 && list[0].messages.some((m) => m.role === 'assistant')
+      },
+      { timeout: 15000 }
+    )
+    const conversations = await page.evaluate(async () => {
+      // @ts-ignore window.api 由 preload 注入
+      return (window.api as import('@shared/types').RendererApi).listAiChats()
+    })
+    expect(conversations.length).toBe(1)
+    expect(conversations[0].title).toContain('看看系统运行了多久')
+    expect(conversations[0].messages.some((m) => m.role === 'user')).toBe(true)
+    expect(conversations[0].messages.some((m) => m.role === 'assistant')).toBe(true)
+
+    // 抽屉里能看到这条历史，并能回看到时间线
+    await page.evaluate(() => {
+      const button = Array.from(document.querySelectorAll('.ai-footer button')).find(
+        (b) => b.textContent?.trim() === '历史'
+      )
+      if (!button) throw new Error('历史 button not found')
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    })
+    await page.waitForSelector('.history-item', { timeout: 10000 })
+    const itemText = await page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('.history-item'))
+      const target = items.find((el) =>
+        el.querySelector('.history-title')?.textContent?.includes('看看系统运行了多久')
+      )
+      if (!target) throw new Error('历史条目未找到')
+      return target.textContent ?? ''
+    })
+    expect(itemText).toContain('看看系统运行了多久')
+    expect(itemText).toContain('条消息')
+
+    await page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('.history-item'))
+      const target = items.find((el) =>
+        el.querySelector('.history-title')?.textContent?.includes('看看系统运行了多久')
+      )
+      if (!target) throw new Error('历史条目未找到')
+      target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    })
+    await page.waitForFunction(
+      () => document.querySelectorAll('.chat-msg.user').length > 0,
+      { timeout: 10000 }
+    )
+    const replayed = await page.$eval('.chat-msg.user', (el) => el.textContent ?? '')
+    expect(replayed).toContain('看看系统运行了多久')
+
+    // 删除这条历史
+    await page.evaluate(() => {
+      const button = Array.from(document.querySelectorAll('.ai-footer button')).find(
+        (b) => b.textContent?.trim() === '历史'
+      )
+      if (!button) throw new Error('历史 button not found')
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    })
+    await page.waitForSelector('.history-item', { timeout: 10000 })
+    await page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('.history-item'))
+      const target = items.find((el) =>
+        el.querySelector('.history-title')?.textContent?.includes('看看系统运行了多久')
+      )
+      const button = target?.querySelector<HTMLButtonElement>('.history-delete')
+      if (!button) throw new Error('删除 button not found')
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    })
+    await page.waitForFunction(() => !document.querySelector('.history-item'), { timeout: 10000 })
+    await page.waitForFunction(
+      async () => {
+        // @ts-ignore window.api 由 preload 注入
+        const list = await (window.api as import('@shared/types').RendererApi).listAiChats()
+        return list.length === 0
+      },
+      { timeout: 10000 }
+    )
+  })
+})

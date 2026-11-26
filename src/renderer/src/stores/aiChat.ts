@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { AiChatEvent, AiChatStartRequest, AiChatToolResult, CommandRiskLevel } from '@shared/types'
+import { messagesToTimeline, useAiChatHistoryStore } from './aiChatHistory'
 
 let listenersBound = false
 
@@ -128,6 +129,8 @@ export const useAiChatStore = defineStore('aiChat', {
               }
             }
           }
+          // 本轮结束，把助手回复与工具结果补进历史
+          void this.persistHistory()
           break
       }
     },
@@ -160,6 +163,8 @@ export const useAiChatStore = defineStore('aiChat', {
         type: 'user',
         text: trimmed
       })
+      // 提问先落盘：助手还没回完就关应用也不丢记录
+      void this.persistHistory()
       if (this.configured === false) {
         this.error = '尚未配置 AI 服务，请先在 设置 → AI 中填写服务地址、模型并保存 API Key'
         return
@@ -220,6 +225,21 @@ export const useAiChatStore = defineStore('aiChat', {
       this.requestId = null
       this.error = ''
       this.timeline = []
+      this.stepLimitReached = false
+      // 清空即另起新对话：下一条消息不写进上一段历史
+      useAiChatHistoryStore().startNew()
+    },
+    /** 把当前对话写入本地历史（幂等：同一对话为覆盖更新）。 */
+    async persistHistory(): Promise<void> {
+      if (this.timeline.length === 0) return
+      const history = useAiChatHistoryStore()
+      await history.persist(this.timeline)
+    },
+    /** 回看一段历史对话：重建时间线（只读，不恢复运行中的请求）。 */
+    loadHistory(messages: Parameters<typeof messagesToTimeline>[0]): void {
+      this.stopCurrent()
+      this.timeline = messagesToTimeline(messages)
+      this.error = ''
       this.stepLimitReached = false
     },
     handleActiveSessionChange(prev: string | null, next: string | null): void {

@@ -4,16 +4,19 @@ import { ElMessage } from 'element-plus'
 import { Close } from '@element-plus/icons-vue'
 import { useAiStore } from '../stores/ai'
 import { useAiChatStore, ChatTimelineItem } from '../stores/aiChat'
+import { useAiChatHistoryStore } from '../stores/aiChatHistory'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useSettingsStore } from '../stores/settings'
 import type { CommandRisk, CommandSuggestion } from '../utils/aiCommand'
 import { renderMarkdown } from '../utils/markdown'
+import { t } from '../i18n'
 
 const emit = defineEmits<{ close: []; 'open-settings': [] }>()
 const props = withDefaults(defineProps<{ width?: number }>(), { width: 380 })
 
 const aiStore = useAiStore()
 const chatStore = useAiChatStore()
+const chatHistory = useAiChatHistoryStore()
 const workspaceStore = useWorkspaceStore()
 const settingsStore = useSettingsStore()
 const bodyRef = ref<HTMLDivElement>()
@@ -21,6 +24,10 @@ const chatBodyRef = ref<HTMLDivElement>()
 const instruction = ref('')
 const chatInput = ref('')
 const inserted = ref<string[]>([])
+/** 历史抽屉是否打开 */
+const historyVisible = ref(false)
+/** 当前展示的是历史对话（只读回看），发送新消息会另起新对话 */
+const historyView = ref(false)
 
 watch(
   () => aiStore.text,
@@ -174,6 +181,11 @@ async function sendChat(): Promise<void> {
     return
   }
   if (!chatInput.value.trim()) return
+  // 回看历史后继续追问：另起新对话，不写进历史对话
+  if (historyView.value) {
+    chatStore.clear()
+    historyView.value = false
+  }
   const text = chatInput.value
   chatInput.value = ''
   await chatStore.send(text, {
@@ -182,6 +194,42 @@ async function sendChat(): Promise<void> {
   })
   await nextTick()
   scrollChat()
+}
+
+async function openHistory(): Promise<void> {
+  await chatHistory.load()
+  historyVisible.value = true
+}
+
+function openConversation(conversation: {
+  id: string
+  messages: Parameters<typeof chatStore.loadHistory>[0]
+}): void {
+  chatStore.loadHistory(conversation.messages)
+  historyView.value = true
+  historyVisible.value = false
+  void nextTick(scrollChat)
+}
+
+async function removeConversation(id: string): Promise<void> {
+  await chatHistory.remove(id)
+}
+
+async function clearHistory(): Promise<void> {
+  await chatHistory.clearAll()
+}
+
+function startNewChat(): void {
+  chatStore.reset()
+  historyView.value = false
+}
+
+function formatChatTime(ts: number): string {
+  const d = new Date(ts)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(
+    d.getMinutes()
+  )}`
 }
 
 function onChatKeydown(ev: KeyboardEvent): void {
@@ -462,11 +510,51 @@ function outputText(item: ChatTimelineItem): string {
         {{ autoExecuteEnabled ? '只读命令自动执行 · 写操作需确认' : '每条命令执行前需确认' }}
       </span>
       <div class="ai-actions">
+        <el-button size="small" @click="openHistory">{{ t('ai.history') }}</el-button>
+        <el-button size="small" @click="startNewChat">{{ t('ai.newChat') }}</el-button>
         <el-button size="small" :disabled="!chatStore.timeline.length" @click="chatStore.reset()">
           清空
         </el-button>
       </div>
     </footer>
+
+    <!-- 助手对话历史 -->
+    <el-drawer v-model="historyVisible" :title="t('ai.historyTitle')" size="420px" direction="rtl">
+      <div class="history-toolbar">
+        <span class="history-count">{{ t('ai.historyCount', { n: chatHistory.conversations.length }) }}</span>
+        <el-button
+          size="small"
+          :disabled="!chatHistory.conversations.length"
+          @click="clearHistory"
+        >
+          {{ t('ai.historyClear') }}
+        </el-button>
+      </div>
+      <div v-if="!chatHistory.conversations.length" class="history-empty">
+        {{ t('ai.historyEmpty') }}
+      </div>
+      <div
+        v-for="conv in chatHistory.conversations"
+        :key="conv.id"
+        class="history-item"
+        @click="openConversation(conv)"
+      >
+        <div class="history-title">{{ conv.title }}</div>
+        <div class="history-meta">
+          <span>{{ formatChatTime(conv.updatedAt) }}</span>
+          <span>{{ t('ai.historyMessages', { n: conv.messages.length }) }}</span>
+        </div>
+        <el-button
+          size="small"
+          text
+          type="danger"
+          class="history-delete"
+          @click.stop="removeConversation(conv.id)"
+        >
+          {{ t('ai.historyDelete') }}
+        </el-button>
+      </div>
+    </el-drawer>
   </aside>
 </template>
 
@@ -803,6 +891,55 @@ function outputText(item: ChatTimelineItem): string {
 .ai-actions {
   display: flex;
   gap: 6px;
+}
+
+/* 对话历史 */
+.history-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.history-count {
+  color: var(--tx-text-3);
+  font-size: 12px;
+}
+.history-empty {
+  color: var(--tx-text-3);
+  font-size: 13px;
+  text-align: center;
+  padding: 24px 8px;
+}
+.history-item {
+  position: relative;
+  border: 1px solid var(--tx-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.history-item:hover {
+  border-color: var(--tx-accent);
+}
+.history-title {
+  color: var(--tx-text);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 48px;
+}
+.history-meta {
+  display: flex;
+  gap: 12px;
+  color: var(--tx-text-3);
+  font-size: 11px;
+  margin-top: 4px;
+}
+.history-delete {
+  position: absolute;
+  top: 6px;
+  right: 6px;
 }
 .chat-timeline {
   display: flex;
