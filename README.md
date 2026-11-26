@@ -11,9 +11,9 @@
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
 | macOS (Apple Silicon) | [terminalx-1.0.0.dmg](https://github.com/Lee330-dotcom/terminalx/releases/download/v1.0.0/terminalx-1.0.0.dmg) | 拖入「应用程序」即可 |
-| Windows (x64) | [terminalx-setup-1.0.0.exe](https://github.com/Lee330-dotcom/terminalx/releases/download/v1.0.0/terminalx-setup-1.0.0.exe) | 向导式安装，可自选目录 |
+| Windows (x64) | [terminalX.Setup.1.0.0.exe](https://github.com/Lee330-dotcom/terminalx/releases/download/v1.0.0/terminalX.Setup.1.0.0.exe) | 向导式安装，可自选目录 |
 
-全部历史版本见 [Releases 页面](https://github.com/Lee330-dotcom/terminalx/releases)。也可以按下面的[打包](#打包构建)步骤自行构建。
+全部历史版本见 [Releases 页面](https://github.com/Lee330-dotcom/terminalx/releases)。macOS 包未做开发者签名，首次打开需在「系统设置 → 隐私与安全性」中放行。也可以按下面的[打包](#打包构建)步骤自行构建。
 
 ## 功能特性
 
