@@ -252,4 +252,76 @@ describe('应用端到端（真实 Electron + 本地测试 SSH 服务器）', ()
       { timeout: 15000 }
     )
   })
+
+  it('传输完成后条目仍保留在传输框，并可打开传输记录', async () => {
+    const page = await getPage()
+    await createConnection(page, 'e2e-transfer', 'test-pass')
+    await doubleClickRow(page, 'e2e-transfer')
+    await waitWelcome(page)
+    await page.waitForSelector('.sftp-panel', { timeout: 15000 })
+
+    // 模拟一次已完成的下载：直接向传输 store 注入条目
+    await page.evaluate(() => {
+      const app = (document.querySelector('#app') as unknown as {
+        __vue_app__: {
+          config: { globalProperties: { $pinia: { _s: Map<string, unknown> } } }
+        }
+      }).__vue_app__
+      const store = app.config.globalProperties.$pinia._s.get('transfers') as {
+        transfers: { id: string; direction: string; name: string; remotePath: string; localPath: string; transferred: number; total: number; status: string; startedAt: number }[]
+      }
+      store.transfers.push({
+        id: 'e2e-done-1',
+        direction: 'download',
+        name: 'app.log',
+        remotePath: '/data/app.log',
+        localPath: '/tmp/app.log',
+        transferred: 2048,
+        total: 2048,
+        status: 'done',
+        startedAt: Date.now()
+      })
+    })
+
+    // 回归：完成后条目不应自动消失，状态要显示为已完成
+    await page.waitForFunction(
+      () => document.querySelector('.transfer-list')?.textContent?.includes('app.log'),
+      { timeout: 10000 }
+    )
+    const transferText = await page.evaluate(
+      () => document.querySelector('.transfer-list')?.textContent ?? ''
+    )
+    expect(transferText).toContain('已完成')
+
+    // 「下载记录」入口可见，点击后打开记录抽屉
+    const hasRecordEntry = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('.sftp-panel .tool-btn')).some(
+        (b) => b.getAttribute('title') === '下载记录'
+      )
+    )
+    expect(hasRecordEntry).toBe(true)
+
+    await page.evaluate(() => {
+      const btn = Array.from(document.querySelectorAll('.sftp-panel .tool-btn')).find(
+        (b) => b.getAttribute('title') === '下载记录'
+      ) as HTMLElement
+      btn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    await page.waitForFunction(
+      () => document.querySelector('.el-drawer')?.textContent?.includes('传输记录'),
+      { timeout: 10000 }
+    )
+
+    // 清空按钮把已结束条目移出传输框
+    await page.evaluate(() => {
+      const btn = Array.from(document.querySelectorAll('.transfer-head .el-button')).find((b) =>
+        b.textContent?.includes('清空')
+      ) as HTMLElement
+      btn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    await page.waitForFunction(
+      () => !document.querySelector('.transfer-list'),
+      { timeout: 10000 }
+    )
+  })
 })

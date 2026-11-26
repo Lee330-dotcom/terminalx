@@ -4,7 +4,7 @@ import { join } from 'path'
 import { Readable, Writable } from 'stream'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Client, Stats } from 'ssh2'
-import { TransferDoneEvent, TransferProgressEvent } from '@shared/types'
+import { TransferDoneEvent, TransferProgressEvent, TransferStartEvent } from '@shared/types'
 import { SftpService, TransferEventSink } from '../sftpService'
 import { ClientHandle, ConnectionManager } from '../connectionManager'
 
@@ -120,8 +120,11 @@ class FakeConnections extends ConnectionManager {
 }
 
 interface Collected {
+  start: TransferStartEvent[]
   progress: TransferProgressEvent[]
   done: TransferDoneEvent[]
+  /** 事件到达顺序：用于验证 start 一定早于 progress */
+  order: string[]
 }
 
 describe('SftpService 集成（fake sftp 通道）', () => {
@@ -132,15 +135,25 @@ describe('SftpService 集成（fake sftp 通道）', () => {
   let tempDir: string
 
   const sink: TransferEventSink = {
-    emitProgress: (ev) => collected.progress.push(ev),
-    emitDone: (ev) => collected.done.push(ev)
+    emitStart: (ev) => {
+      collected.start.push(ev)
+      collected.order.push(`start:${ev.transferId}`)
+    },
+    emitProgress: (ev) => {
+      collected.progress.push(ev)
+      collected.order.push(`progress:${ev.transferId}`)
+    },
+    emitDone: (ev) => {
+      collected.done.push(ev)
+      collected.order.push(`done:${ev.transferId}`)
+    }
   }
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'sftp-test-'))
     sftp = new FakeSftp()
     conns = new FakeConnections(sftp)
-    collected = { progress: [], done: [] }
+    collected = { start: [], progress: [], done: [], order: [] }
     service = new SftpService(conns, sink)
   })
 
@@ -224,6 +237,26 @@ describe('SftpService 集成（fake sftp 通道）', () => {
     expect(readFileSync(localFile).length).toBe(600 * 1024)
     const last = collected.progress.filter((p) => p.transferId === id).at(-1)
     expect(last).toMatchObject({ transferred: 600 * 1024, total: 600 * 1024 })
+  })
+
+  it('入队即广播 start 事件：渲染进程先建条目再收到进度', async () => {
+    sftp.remoteContent['/data/dl.bin'] = Buffer.alloc(64 * 1024, 0x33)
+    sftp.statResult['/data/dl.bin'] = makeStats(64 * 1024)
+    const localFile = join(tempDir, 'dl2.bin')
+    const id = service.download('c1', '/data/dl.bin', localFile)
+    // start 必须同步在入队时发出，早于任何进度事件
+    expect(collected.start.map((s) => s.transferId)).toContain(id)
+    expect(collected.start.find((s) => s.transferId === id)).toMatchObject({
+      direction: 'download',
+      remotePath: '/data/dl.bin',
+      localPath: localFile
+    })
+    await waitForDone(id)
+    expect(collected.progress.find((p) => p.transferId === id)).toBeTruthy()
+    // start 必须早于第一条 progress
+    expect(collected.order.indexOf(`start:${id}`)).toBeLessThan(
+      collected.order.indexOf(`progress:${id}`)
+    )
   })
 
   it('队列串行：第二个传输在第一个完成后才开始', async () => {

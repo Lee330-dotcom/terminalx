@@ -9,7 +9,8 @@ import {
   SftpSearchEvent,
   TransferDoneEvent,
   TransferProgressEvent,
-  TransferResult
+  TransferResult,
+  TransferStartEvent
 } from '@shared/types'
 import { ClientHandle, ConnectionManager } from './connectionManager'
 import { FindOutputParser } from './findOutput'
@@ -25,6 +26,8 @@ const MAX_TRANSFER_BYTES = 100 * 1024 * 1024
 const PROGRESS_INTERVAL_MS = 100
 
 export interface TransferEventSink {
+  /** 传输入队时同步广播：渲染进程据此先建条目，再收到进度/完成事件。 */
+  emitStart(ev: TransferStartEvent): void
   emitProgress(ev: TransferProgressEvent): void
   emitDone(ev: TransferDoneEvent): void
 }
@@ -596,6 +599,14 @@ export class SftpService {
     const transfer: QueuedTransfer = { ...t, cancelRequested: false, streams: [] }
     this.transfers.set(transfer.id, transfer)
     this.queue.push(transfer)
+    // 先广播 start，再开始跑：保证渲染进程先建好条目再收到进度/完成事件
+    this.sink.emitStart({
+      transferId: transfer.id,
+      direction: transfer.direction,
+      remotePath: transfer.remotePath,
+      localPath: transfer.localPath,
+      startedAt: Date.now()
+    })
     void this.pump()
     return transfer.id
   }

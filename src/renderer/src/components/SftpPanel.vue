@@ -526,9 +526,61 @@ const pathParts = computed(() => {
   }))
 })
 
-const runningTransfers = computed(() =>
-  transferStore.transfers.filter((t) => t.status === 'running')
+/** 传输记录抽屉 */
+const recordsVisible = ref(false)
+const recordFilter = ref<'all' | 'download' | 'upload'>('all')
+
+const filteredRecords = computed(() => {
+  const all = transferStore.records
+  if (recordFilter.value === 'all') return all
+  return all.filter((r) => r.direction === recordFilter.value)
+})
+
+const hasFinishedTransfers = computed(() =>
+  transferStore.transfers.some((t) => t.status !== 'running')
 )
+
+function transferStatusLabel(status: string): string {
+  switch (status) {
+    case 'running':
+      return t('sftp.statusRunning')
+    case 'done':
+      return t('sftp.statusDone')
+    case 'error':
+      return t('sftp.statusError')
+    case 'canceled':
+      return t('sftp.statusCanceled')
+    default:
+      return status
+  }
+}
+
+function formatTime(ts: number): string {
+  if (!ts) return ''
+  const d = new Date(ts)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(
+    d.getMinutes()
+  )}:${pad(d.getSeconds())}`
+}
+
+function openRecords(): void {
+  recordsVisible.value = true
+  void transferStore.loadRecords()
+}
+
+async function revealTransfer(localPath: string): Promise<void> {
+  const ok = await transferStore.reveal(localPath)
+  if (!ok) ElMessage.warning(t('sftp.recordsMissing'))
+}
+
+async function removeRecord(id: string): Promise<void> {
+  await transferStore.removeRecord(id)
+}
+
+async function clearAllRecords(): Promise<void> {
+  await transferStore.clearRecords()
+}
 
 function onGlobalClick(): void {
   if (contextMenu.value.visible) contextMenu.value.visible = false
@@ -617,6 +669,19 @@ watch(
         >
           <path d="M2 4h4l2 2h6v7H2V4z" />
           <path d="M8 9v4M6 11h4" />
+        </svg>
+      </button>
+      <button class="tool-btn" :title="t('sftp.records')" @click.stop="openRecords">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
+          <circle cx="8" cy="8" r="6" />
+          <path d="M8 4.5V8l2.5 1.5" />
         </svg>
       </button>
     </div>
@@ -871,10 +936,27 @@ watch(
     </div>
 
     <!-- Transfers -->
-    <div v-if="runningTransfers.length > 0" class="transfer-list">
-      <div v-for="tr in runningTransfers" :key="tr.id" class="transfer-item">
+    <div v-if="transferStore.transfers.length > 0" class="transfer-list">
+      <div class="transfer-head">
+        <span class="transfer-head-title">{{ t('sftp.transfers') }}</span>
+        <el-button
+          size="small"
+          text
+          :disabled="!hasFinishedTransfers"
+          @click="transferStore.clearFinished()"
+        >
+          {{ t('sftp.transferClear') }}
+        </el-button>
+      </div>
+      <div
+        v-for="tr in transferStore.transfers"
+        :key="tr.id"
+        class="transfer-item"
+        :class="`transfer-${tr.status}`"
+      >
         <span class="transfer-name" :title="tr.remotePath">{{ tr.name }}</span>
         <el-progress
+          v-if="tr.status === 'running'"
           class="transfer-progress"
           :percentage="
             tr.total > 0 ? Math.min(100, Math.round((tr.transferred / tr.total) * 100)) : 0
@@ -882,12 +964,30 @@ watch(
           :stroke-width="6"
           :show-text="false"
         />
+        <span v-else class="transfer-status" :class="`transfer-status-${tr.status}`">
+          {{ transferStatusLabel(tr.status) }}
+        </span>
         <span class="transfer-size">
           {{ formatSize(tr.transferred) }}{{ tr.total > 0 ? ` / ${formatSize(tr.total)}` : '' }}
         </span>
-        <el-button size="small" text type="danger" @click="transferStore.cancel(tr.id)">{{
-          t('common.cancel')
-        }}</el-button>
+        <span v-if="tr.error" class="transfer-error" :title="tr.error">{{ tr.error }}</span>
+        <el-button
+          v-if="tr.status === 'running'"
+          size="small"
+          text
+          type="danger"
+          @click="transferStore.cancel(tr.id)"
+        >
+          {{ t('common.cancel') }}
+        </el-button>
+        <el-button
+          v-else-if="tr.direction === 'download' && tr.status === 'done'"
+          size="small"
+          text
+          @click="revealTransfer(tr.localPath)"
+        >
+          {{ t('sftp.reveal') }}
+        </el-button>
       </div>
     </div>
 
@@ -999,6 +1099,63 @@ watch(
     <el-dialog v-model="previewVisible" :title="previewTitle" width="70%" top="6vh">
       <pre class="preview-text">{{ previewText }}</pre>
     </el-dialog>
+
+    <!-- 传输记录抽屉 -->
+    <el-drawer
+      v-model="recordsVisible"
+      :title="t('sftp.recordsTitle')"
+      size="520px"
+      direction="rtl"
+    >
+      <div class="records-toolbar">
+        <el-radio-group v-model="recordFilter" size="small">
+          <el-radio-button value="all">{{ t('sftp.recordsFilterAll') }}</el-radio-button>
+          <el-radio-button value="download">{{ t('sftp.recordsFilterDownload') }}</el-radio-button>
+          <el-radio-button value="upload">{{ t('sftp.recordsFilterUpload') }}</el-radio-button>
+        </el-radio-group>
+        <el-button
+          size="small"
+          :disabled="!filteredRecords.length"
+          @click="clearAllRecords"
+        >
+          {{ t('sftp.recordsClear') }}
+        </el-button>
+      </div>
+      <div v-if="!filteredRecords.length" class="records-empty">{{ t('sftp.recordsEmpty') }}</div>
+      <div v-for="rec in filteredRecords" :key="rec.id" class="record-item">
+        <div class="record-head">
+          <span class="record-name" :title="rec.remotePath">{{ rec.name }}</span>
+          <span class="record-tag" :class="`record-${rec.direction}`">
+            {{
+              rec.direction === 'download'
+                ? t('sftp.recordsFilterDownload')
+                : t('sftp.recordsFilterUpload')
+            }}
+          </span>
+          <span class="transfer-status" :class="`transfer-status-${rec.status}`">
+            {{ transferStatusLabel(rec.status) }}
+          </span>
+        </div>
+        <div class="record-meta">
+          <span>{{ formatTime(rec.startedAt) }}</span>
+          <span>{{ formatSize(rec.total || rec.transferred) }}</span>
+        </div>
+        <div class="record-path" :title="rec.localPath">{{ rec.localPath }}</div>
+        <div class="record-actions">
+          <el-button
+            v-if="rec.direction === 'download' && rec.status === 'done'"
+            size="small"
+            text
+            @click="revealTransfer(rec.localPath)"
+          >
+            {{ t('sftp.reveal') }}
+          </el-button>
+          <el-button size="small" text type="danger" @click="removeRecord(rec.id)">
+            {{ t('sftp.recordsDelete') }}
+          </el-button>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -1461,6 +1618,18 @@ watch(
   font-size: 12px;
   padding: 2px 0;
 }
+.transfer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 4px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--tx-border);
+}
+.transfer-head-title {
+  font-size: 11px;
+  color: var(--tx-text-3);
+}
 .transfer-name {
   width: 100px;
   overflow: hidden;
@@ -1474,6 +1643,99 @@ watch(
 .transfer-size {
   color: var(--tx-text-3);
   white-space: nowrap;
+}
+.transfer-status {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.transfer-status-done {
+  color: var(--tx-success);
+}
+.transfer-status-error {
+  color: var(--tx-danger);
+}
+.transfer-status-canceled {
+  color: var(--tx-text-3);
+}
+.transfer-status-running {
+  color: var(--tx-accent);
+}
+.transfer-error {
+  color: var(--tx-danger);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+
+/* 传输记录 */
+.records-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.records-empty {
+  color: var(--tx-text-3);
+  font-size: 13px;
+  text-align: center;
+  padding: 24px 0;
+}
+.record-item {
+  border: 1px solid var(--tx-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+.record-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.record-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--tx-text);
+  font-size: 13px;
+}
+.record-tag {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--tx-border);
+  color: var(--tx-text-3);
+  flex-shrink: 0;
+}
+.record-download {
+  color: var(--tx-accent);
+  border-color: var(--tx-accent);
+}
+.record-upload {
+  color: var(--tx-success);
+  border-color: var(--tx-success);
+}
+.record-meta {
+  display: flex;
+  gap: 12px;
+  color: var(--tx-text-3);
+  font-size: 11px;
+  margin-top: 4px;
+}
+.record-path {
+  color: var(--tx-text-3);
+  font-size: 11px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.record-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 4px;
 }
 
 /* Preview */

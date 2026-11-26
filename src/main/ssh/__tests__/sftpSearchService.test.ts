@@ -121,7 +121,7 @@ describe('SftpService 文件名搜索：远端 find', () => {
   it('把 find 输出解析成条目并回报完成', async () => {
     const conns = new FakeSearchConnections()
     const collector = makeCollector()
-    const service = new SftpService(conns, { emitProgress: () => {}, emitDone: () => {} }, {
+    const service = new SftpService(conns, { emitStart: () => {}, emitProgress: () => {}, emitDone: () => {} }, {
       emitSearch: (ev) => collector.events.push(ev)
     })
 
@@ -156,7 +156,7 @@ describe('SftpService 文件名搜索：远端 find', () => {
   it('关键字非法时报错而不是执行命令', async () => {
     const conns = new FakeSearchConnections()
     const collector = makeCollector()
-    const service = new SftpService(conns, { emitProgress: () => {}, emitDone: () => {} }, {
+    const service = new SftpService(conns, { emitStart: () => {}, emitProgress: () => {}, emitDone: () => {} }, {
       emitSearch: (ev) => collector.events.push(ev)
     })
 
@@ -171,7 +171,7 @@ describe('SftpService 文件名搜索：取消', () => {
   it('取消进行中的搜索会关闭远端通道并回报已取消', async () => {
     const conns = new FakeSearchConnections()
     const collector = makeCollector()
-    const service = new SftpService(conns, { emitProgress: () => {}, emitDone: () => {} }, {
+    const service = new SftpService(conns, { emitStart: () => {}, emitProgress: () => {}, emitDone: () => {} }, {
       emitSearch: (ev) => collector.events.push(ev)
     })
 
@@ -193,7 +193,7 @@ describe('SftpService 文件名搜索：取消', () => {
   it('同一连接上发起新搜索会先取消旧搜索', async () => {
     const conns = new FakeSearchConnections()
     const collector = makeCollector()
-    const service = new SftpService(conns, { emitProgress: () => {}, emitDone: () => {} }, {
+    const service = new SftpService(conns, { emitStart: () => {}, emitProgress: () => {}, emitDone: () => {} }, {
       emitSearch: (ev) => collector.events.push(ev)
     })
 
