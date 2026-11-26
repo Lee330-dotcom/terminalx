@@ -64,9 +64,32 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await browser?.disconnect()
-  electron?.kill()
+  const proc = electron
+  electron = null
+  if (proc && proc.exitCode === null && proc.signalCode === null) {
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        proc.kill('SIGKILL')
+        resolve()
+      }, 5000)
+      proc.once('exit', () => {
+        clearTimeout(timer)
+        resolve()
+      })
+      proc.kill()
+    })
+  }
   server.close()
-  if (userDataDir) await fs.rm(userDataDir, { recursive: true, force: true })
+  if (!userDataDir) return
+  // Chromium 退出后还可能继续落盘，直接删会偶发 ENOTEMPTY
+  for (let i = 0; i < 5; i++) {
+    try {
+      await fs.rm(userDataDir, { recursive: true, force: true })
+      return
+    } catch {
+      await new Promise((r) => setTimeout(r, 300))
+    }
+  }
 })
 
 async function getPage(): Promise<Page> {
