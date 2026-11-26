@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { Snippet } from '@shared/types'
+import { useSnippetStore } from '../stores/snippets'
+import { executeSnippet } from '../snippets/execute'
+import { t } from '../i18n'
 
 const props = defineProps<{
   visible: boolean
@@ -11,6 +15,8 @@ const emit = defineEmits<{
   send: [command: string]
 }>()
 
+const snippetStore = useSnippetStore()
+
 const search = ref('')
 const selectedIndex = ref(0)
 
@@ -19,6 +25,16 @@ interface Command {
   description: string
   command: string
   category: string
+}
+
+/** 面板结果项：内置命令直接下发文本，用户快捷命令走统一下发路径 */
+interface PaletteItem {
+  key: string
+  label: string
+  description: string
+  category: string
+  builtin?: string
+  snippet?: Snippet
 }
 
 const commands: Command[] = [
@@ -59,14 +75,33 @@ const commands: Command[] = [
   { label: 'exit', description: '退出', command: 'exit\n', category: '系统' }
 ]
 
+const items = computed<PaletteItem[]>(() => {
+  const builtins: PaletteItem[] = commands.map((c) => ({
+    key: `builtin:${c.label}`,
+    label: c.label,
+    description: c.description,
+    category: c.category,
+    builtin: c.command
+  }))
+  const snippets: PaletteItem[] = snippetStore.snippets.map((s) => ({
+    key: `snippet:${s.id}`,
+    label: s.name,
+    description: s.description || s.command,
+    category: snippetStore.groupName(s.groupId) || t('snippet.ungrouped'),
+    snippet: s
+  }))
+  return [...builtins, ...snippets]
+})
+
 const filtered = computed(() => {
   const q = search.value.toLowerCase().trim()
-  if (!q) return commands
-  return commands.filter(
+  if (!q) return items.value
+  return items.value.filter(
     (c) =>
       c.label.toLowerCase().includes(q) ||
       c.description.toLowerCase().includes(q) ||
-      c.category.toLowerCase().includes(q)
+      c.category.toLowerCase().includes(q) ||
+      (c.snippet?.command.toLowerCase().includes(q) ?? false)
   )
 })
 
@@ -87,12 +122,17 @@ function onKeyDown(e: KeyboardEvent): void {
   } else if (e.key === 'Enter') {
     e.preventDefault()
     const cmd = filtered.value[selectedIndex.value]
-    if (cmd) {
-      emit('send', cmd.command)
-      emit('close')
-    }
+    if (cmd) void selectCommand(cmd)
   }
 }
+
+// 面板打开时刷新快捷命令，保证新建的片段立即可搜到
+watch(
+  () => props.visible,
+  (visible) => {
+    if (visible) void snippetStore.load()
+  }
+)
 
 onMounted(() => {
   document.addEventListener('keydown', onKeyDown)
@@ -102,9 +142,17 @@ onUnmounted(() => {
   document.removeEventListener('keydown', onKeyDown)
 })
 
-function selectCommand(cmd: Command): void {
-  emit('send', cmd.command)
-  emit('close')
+async function selectCommand(cmd: PaletteItem): Promise<void> {
+  if (cmd.snippet) {
+    // 用户快捷命令：含参数时先填参确认，确认后才下发；取消则面板保持打开
+    const done = await executeSnippet(cmd.snippet, props.sessionId)
+    if (done) emit('close')
+    return
+  }
+  if (cmd.builtin !== undefined) {
+    emit('send', cmd.builtin)
+    emit('close')
+  }
 }
 </script>
 
@@ -126,7 +174,7 @@ function selectCommand(cmd: Command): void {
         <div class="cmd-list">
           <div
             v-for="(cmd, idx) in filtered"
-            :key="cmd.label"
+            :key="cmd.key"
             class="cmd-item"
             :class="{ active: idx === selectedIndex }"
             @click="selectCommand(cmd)"

@@ -6,6 +6,7 @@ import { SettingsStore } from './store/settingsStore'
 import { CredentialVault } from './store/credentialVault'
 import { ConnectionStore } from './store/connectionStore'
 import { HostKeyStore } from './store/hostKeyStore'
+import { SnippetStore } from './store/snippetStore'
 import { SafeStorageProtector } from './safeStorageProtector'
 import { ConnectionManager } from './ssh/connectionManager'
 import { SessionManager, SessionEventSink } from './ssh/sessionManager'
@@ -22,6 +23,7 @@ export class AppContext {
   readonly vault: CredentialVault
   readonly connections: ConnectionStore
   readonly hostKeys: HostKeyStore
+  readonly snippets: SnippetStore
   readonly ssh: ConnectionManager
   readonly sessions: SessionManager
   readonly sftp: SftpService
@@ -38,6 +40,7 @@ export class AppContext {
     )
     this.connections = new ConnectionStore(join(userDataDir, 'connections.json'), this.vault)
     this.hostKeys = new HostKeyStore(join(userDataDir, 'hostKeys.json'))
+    this.snippets = new SnippetStore(join(userDataDir, 'snippets.json'))
 
     this.hostKeyGate = new HostKeyGate(this.hostKeys, (request) => {
       for (const win of BrowserWindow.getAllWindows()) {

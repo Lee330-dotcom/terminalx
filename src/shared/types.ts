@@ -409,6 +409,50 @@ export interface HostKeyImportResult {
   skipped: number
 }
 
+// ---- 快捷命令（Snippet） ----
+
+/** 快捷命令分组 */
+export interface SnippetGroup {
+  id: string
+  name: string
+  /** 展示顺序，小的在前 */
+  order: number
+  createdAt: number
+}
+
+/** 一条快捷命令 */
+export interface Snippet {
+  id: string
+  /** 名称，命令面板与右键菜单里展示 */
+  name: string
+  /** 命令正文，可含 `{name}` 占位符 */
+  command: string
+  /** 说明，可空 */
+  description: string
+  /** 所属分组；null 表示未分组 */
+  groupId: string | null
+  /** 下发后是否自动回车，默认 false（只写入输入区，由用户按 Enter 执行） */
+  autoEnter: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+/** 快捷命令库快照 */
+export interface SnippetLibrary {
+  groups: SnippetGroup[]
+  snippets: Snippet[]
+}
+
+/** 新建/编辑快捷命令的入参（id 为空表示新建） */
+export interface SnippetInput {
+  id?: string
+  name: string
+  command: string
+  description?: string
+  groupId?: string | null
+  autoEnter?: boolean
+}
+
 // ---- IPC 通道 ----
 
 export const IpcChannels = {
@@ -466,6 +510,12 @@ export const IpcChannels = {
   hostKeyForget: 'host-key:forget',
   hostKeyImport: 'host-key:import',
   hostKeyRespond: 'host-key:respond',
+  snippetList: 'snippet:list',
+  snippetUpsert: 'snippet:upsert',
+  snippetDelete: 'snippet:delete',
+  snippetGroupCreate: 'snippet:group-create',
+  snippetGroupRename: 'snippet:group-rename',
+  snippetGroupDelete: 'snippet:group-delete',
   // 主进程 -> 渲染进程事件
   evAiChunk: 'ev:ai:chunk',
   evAiDone: 'ev:ai:done',
@@ -581,4 +631,16 @@ export interface RendererApi {
   respondHostKey(requestId: string, accept: boolean): Promise<boolean>
   /** 订阅主机指纹确认请求 */
   onHostKeyPrompt(cb: (prompt: HostKeyPrompt) => void): () => void
+  /** 读取快捷命令库（分组 + 快捷命令） */
+  listSnippets(): Promise<SnippetLibrary>
+  /** 新建或更新一条快捷命令 */
+  upsertSnippet(input: SnippetInput): Promise<Snippet>
+  /** 删除一条快捷命令 */
+  deleteSnippet(id: string): Promise<void>
+  /** 新建分组 */
+  createSnippetGroup(name: string): Promise<SnippetGroup>
+  /** 重命名分组 */
+  renameSnippetGroup(id: string, name: string): Promise<SnippetGroup>
+  /** 删除分组（其下快捷命令回落为未分组，不删除） */
+  deleteSnippetGroup(id: string): Promise<void>
 }

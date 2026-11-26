@@ -3,13 +3,19 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
+import { Snippet } from '@shared/types'
 import { registerTerminalSearch, terminalSearchResult } from '../utils/terminalSearch'
+import { useSnippetStore } from '../stores/snippets'
+import { executeSnippet } from '../snippets/execute'
+import { t } from '../i18n'
 import { onThemeChange, themeTokensOrDefault } from '../theme'
 import { buildSearchDecorations, buildXtermTheme } from '../theme/xtermTheme'
 import '@xterm/xterm/css/xterm.css'
 
 const props = defineProps<{ sessionId: string; interactive?: boolean }>()
 const emit = defineEmits<{ explain: [text: string] }>()
+
+const snippetStore = useSnippetStore()
 
 const commandNames = [
   'ls',
@@ -64,6 +70,19 @@ const commandHints = computed(() => {
 
 const container = ref<HTMLDivElement>()
 const selectionPos = ref<{ left: number; top: number } | null>(null)
+// 终端右键菜单：按分组展示用户快捷命令
+const menuVisible = ref(false)
+const menuPos = ref({ left: 0, top: 0 })
+const menuSections = computed(() => {
+  const sections: { id: string; name: string; items: Snippet[] }[] = []
+  for (const group of snippetStore.groups) {
+    const items = snippetStore.snippets.filter((s) => s.groupId === group.id)
+    if (items.length > 0) sections.push({ id: group.id, name: group.name, items })
+  }
+  const loose = snippetStore.snippets.filter((s) => !s.groupId)
+  if (loose.length > 0) sections.push({ id: '', name: t('snippet.ungrouped'), items: loose })
+  return sections
+})
 let term: Terminal | null = null
 let fit: FitAddon | null = null
 let search: SearchAddon | null = null
@@ -207,6 +226,9 @@ onMounted(() => {
   })
   unsubSelection = () => selectionDisposable.dispose()
   container.value!.addEventListener('mouseup', onMouseUp)
+  container.value!.addEventListener('contextmenu', onContextMenu)
+  document.addEventListener('mousedown', onDocumentMouseDown)
+  document.addEventListener('keydown', onDocumentKeydown)
 
   resizeObserver = new ResizeObserver(() => {
     safeFit()
@@ -235,6 +257,36 @@ function onMouseUp(e: MouseEvent): void {
   refreshExplainButton()
 }
 
+/** 右键打开快捷命令菜单（阻断浏览器默认菜单）。 */
+function onContextMenu(e: MouseEvent): void {
+  e.preventDefault()
+  const shell = container.value?.parentElement
+  if (!shell) return
+  const rect = shell.getBoundingClientRect()
+  menuPos.value = { left: e.clientX - rect.left, top: e.clientY - rect.top }
+  menuVisible.value = true
+}
+
+function closeMenu(): void {
+  menuVisible.value = false
+}
+
+async function runMenuSnippet(snippet: Snippet): Promise<void> {
+  closeMenu()
+  await executeSnippet(snippet, props.sessionId)
+}
+
+function onDocumentMouseDown(e: MouseEvent): void {
+  if (!menuVisible.value) return
+  const target = e.target as HTMLElement | null
+  if (target?.closest('.terminal-menu')) return
+  closeMenu()
+}
+
+function onDocumentKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') closeMenu()
+}
+
 onBeforeUnmount(() => {
   unsubData?.()
   unsubSelection?.()
@@ -242,6 +294,9 @@ onBeforeUnmount(() => {
   unregisterSearch?.()
   searchResultSub?.dispose()
   container.value?.removeEventListener('mouseup', onMouseUp)
+  container.value?.removeEventListener('contextmenu', onContextMenu)
+  document.removeEventListener('mousedown', onDocumentMouseDown)
+  document.removeEventListener('keydown', onDocumentKeydown)
   resizeObserver?.disconnect()
   term?.dispose()
   term = null
@@ -285,6 +340,29 @@ defineExpose({ fit: safeFit })
     >
       ✦ AI 解释
     </button>
+    <div
+      v-if="menuVisible"
+      class="terminal-menu"
+      :style="{ left: `${menuPos.left}px`, top: `${menuPos.top}px` }"
+      @mousedown.stop
+    >
+      <div class="terminal-menu-title">{{ t('snippet.menuTitle') }}</div>
+      <div v-if="menuSections.length === 0" class="terminal-menu-empty">
+        {{ t('snippet.menuEmpty') }}
+      </div>
+      <template v-for="section in menuSections" :key="section.id || 'loose'">
+        <div class="terminal-menu-group">{{ section.name }}</div>
+        <button
+          v-for="item in section.items"
+          :key="item.id"
+          class="terminal-menu-item"
+          @click="runMenuSnippet(item)"
+        >
+          <span class="terminal-menu-item-name">{{ item.name }}</span>
+          <code class="terminal-menu-item-command">{{ item.command }}</code>
+        </button>
+      </template>
+    </div>
   </div>
 </template>
 
@@ -378,5 +456,64 @@ defineExpose({ fit: safeFit })
 .ai-explain-btn:hover {
   background: color-mix(in srgb, var(--tx-accent) 18%, var(--tx-panel));
   color: var(--tx-text);
+}
+.terminal-menu {
+  position: absolute;
+  z-index: 20;
+  min-width: 200px;
+  max-width: 320px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--tx-border-strong);
+  border-radius: var(--tx-radius-md);
+  background: var(--tx-overlay);
+  box-shadow: var(--tx-shadow-lg);
+  color: var(--tx-text);
+}
+.terminal-menu-title {
+  padding: 4px 8px 6px;
+  color: var(--tx-text-3);
+  font-size: 11px;
+}
+.terminal-menu-empty {
+  padding: 6px 8px 8px;
+  color: var(--tx-text-3);
+  font-size: 12px;
+}
+.terminal-menu-group {
+  padding: 6px 8px 3px;
+  color: var(--tx-text-3);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.terminal-menu-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--tx-radius-sm);
+  background: transparent;
+  color: var(--tx-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.terminal-menu-item:hover {
+  background: var(--tx-accent-soft);
+}
+.terminal-menu-item-name {
+  font-size: 12px;
+}
+.terminal-menu-item-command {
+  overflow: hidden;
+  color: var(--tx-text-3);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

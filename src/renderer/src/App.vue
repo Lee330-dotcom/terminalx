@@ -26,6 +26,7 @@ import CommandPalette from './components/CommandPalette.vue'
 import AiPanel from './components/AiPanel.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import HostKeyDialog from './components/HostKeyDialog.vue'
+import SnippetRunnerDialog from './components/SnippetRunnerDialog.vue'
 import WorkspaceGrid from './components/workspace/WorkspaceGrid.vue'
 import { useWorkspaceStore, PaneState } from './stores/workspace'
 import { useAiStore } from './stores/ai'
@@ -33,6 +34,7 @@ import { useAiChatStore } from './stores/aiChat'
 import { useAppStore } from './stores/app'
 import { useSettingsStore } from './stores/settings'
 import { useHostKeyStore } from './stores/hostKeys'
+import { useSnippetStore } from './stores/snippets'
 import { t, currentLang } from './i18n'
 import { MAX_PANES_PER_TAB } from './workspace/splitTree'
 import {
@@ -46,6 +48,7 @@ import type { ConnectionFilter } from './filter'
 
 const workspaceStore = useWorkspaceStore()
 const hostKeyStore = useHostKeyStore()
+const snippetStore = useSnippetStore()
 const appStore = useAppStore()
 const settingsStore = useSettingsStore()
 const aiStore = useAiStore()
@@ -333,6 +336,7 @@ onMounted(() => {
   aiChatStore.ensureListeners()
   workspaceStore.ensureStatusListener()
   hostKeyStore.ensurePromptListener()
+  void snippetStore.load()
   document.addEventListener('keydown', onGlobalKeydown)
 })
 
@@ -630,6 +634,7 @@ onUnmounted(() => {
       <SettingsPanel v-model:visible="settingsVisible" />
       <ImportDialog v-model:visible="importVisible" @imported="appStore.refresh()" />
       <HostKeyDialog />
+      <SnippetRunnerDialog />
       <CommandPalette
         :visible="cmdPaletteVisible"
         :session-id="workspaceStore.activeSessionId ?? ''"

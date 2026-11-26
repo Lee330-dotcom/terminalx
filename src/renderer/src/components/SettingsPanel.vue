@@ -7,6 +7,7 @@ import {
   Close,
   Connection,
   Download,
+  EditPen,
   Files,
   Lock,
   MagicStick,
@@ -26,6 +27,7 @@ import { isDarkColor } from '@shared/color'
 import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '../stores/settings'
 import { useHostKeyStore } from '../stores/hostKeys'
+import SnippetManager from './SnippetManager.vue'
 import { t, setLang, Lang } from '../i18n'
 import { DEFAULT_THEME, THEME_PRESETS, ThemePreset } from '../theme'
 
@@ -46,6 +48,7 @@ const sections = [
   { id: 'ai', key: 'settings.ai', icon: MagicStick },
   { id: 'mcp', key: 'settings.mcp', icon: Connection },
   { id: 'hostkey', key: 'hostKey.section', icon: Lock },
+  { id: 'snippets', key: 'snippet.section', icon: EditPen },
   { id: 'backup', key: 'settings.backup', icon: Files },
   { id: 'system', key: 'settings.system', icon: Setting }
 ]
@@ -1047,6 +1050,17 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
                   {{ t('hostKey.forget') }}
                 </el-button>
               </div>
+            </div>
+          </template>
+
+          <!-- 快捷命令 -->
+          <template v-if="activeSection === 'snippets'">
+            <div class="settings-card">
+              <div class="card-title">{{ t('snippet.section') }}</div>
+              <div class="setting-desc">{{ t('snippet.sectionDesc') }}</div>
+            </div>
+            <div class="settings-card">
+              <SnippetManager />
             </div>
           </template>
 

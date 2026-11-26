@@ -124,7 +124,13 @@ const api: RendererApi = {
     const listener: (e: IpcRendererEvent, ev: HostKeyPrompt) => void = (_e, ev) => cb(ev)
     ipcRenderer.on(IpcChannels.evHostKeyPrompt, listener)
     return () => ipcRenderer.removeListener(IpcChannels.evHostKeyPrompt, listener)
-  }
+  },
+  listSnippets: () => ipcRenderer.invoke(IpcChannels.snippetList),
+  upsertSnippet: (input) => ipcRenderer.invoke(IpcChannels.snippetUpsert, input),
+  deleteSnippet: (id) => ipcRenderer.invoke(IpcChannels.snippetDelete, id),
+  createSnippetGroup: (name) => ipcRenderer.invoke(IpcChannels.snippetGroupCreate, name),
+  renameSnippetGroup: (id, name) => ipcRenderer.invoke(IpcChannels.snippetGroupRename, id, name),
+  deleteSnippetGroup: (id) => ipcRenderer.invoke(IpcChannels.snippetGroupDelete, id)
 }
 
 if (process.contextIsolated) {

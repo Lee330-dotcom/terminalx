@@ -8,7 +8,8 @@ import {
   ImportApplyRequest,
   ImportPreviewRequest,
   ProbeTarget,
-  Settings
+  Settings,
+  SnippetInput
 } from '@shared/types'
 import { AppContext } from './appContext'
 import { probeTargets } from './ssh/latencyProbe'
@@ -214,6 +215,22 @@ export function registerIpcHandlers(ctx: AppContext): void {
     ctx.hostKeyGate.respond(requestId, accept === true)
     return true
   })
+
+  // ---- 快捷命令 ----
+  ipcMain.handle(IpcChannels.snippetList, () => ctx.snippets.list())
+  ipcMain.handle(IpcChannels.snippetUpsert, (_e, input: SnippetInput) =>
+    ctx.snippets.upsert(input)
+  )
+  ipcMain.handle(IpcChannels.snippetDelete, (_e, id: string) => ctx.snippets.remove(id))
+  ipcMain.handle(IpcChannels.snippetGroupCreate, (_e, name: string) =>
+    ctx.snippets.createGroup(name)
+  )
+  ipcMain.handle(IpcChannels.snippetGroupRename, (_e, id: string, name: string) =>
+    ctx.snippets.renameGroup(id, name)
+  )
+  ipcMain.handle(IpcChannels.snippetGroupDelete, (_e, id: string) =>
+    ctx.snippets.removeGroup(id)
+  )
 
   // ---- 文件对话框 ----
   ipcMain.handle('dialog:open-file', async (e) => {
