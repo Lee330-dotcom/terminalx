@@ -10,6 +10,7 @@ import {
   RendererApi,
   SessionDataEvent,
   SessionStatusEvent,
+  SftpSearchEvent,
   TransferProgressEvent,
   TransferDoneEvent
 } from '../shared/types'
@@ -91,6 +92,14 @@ const api: RendererApi = {
   sftpDownload: (connectionId, remotePath, localPath) =>
     ipcRenderer.invoke(IpcChannels.sftpDownload, connectionId, remotePath, localPath),
   sftpCancel: (transferId) => ipcRenderer.invoke(IpcChannels.sftpCancel, transferId),
+  sftpSearch: (connectionId, root, keyword) =>
+    ipcRenderer.invoke(IpcChannels.sftpSearch, connectionId, root, keyword),
+  sftpSearchCancel: (searchId) => ipcRenderer.invoke(IpcChannels.sftpSearchCancel, searchId),
+  onSftpSearch: (cb): (() => void) => {
+    const listener: (e: IpcRendererEvent, ev: SftpSearchEvent) => void = (_e, ev) => cb(ev)
+    ipcRenderer.on(IpcChannels.evSftpSearch, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.evSftpSearch, listener)
+  },
   onTransferProgress: (cb): (() => void) => {
     const listener: (e: IpcRendererEvent, ev: TransferProgressEvent) => void = (_e, ev) => cb(ev)
     ipcRenderer.on(IpcChannels.evTransferProgress, listener)

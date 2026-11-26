@@ -295,6 +295,25 @@ export interface SftpListResult {
   entries: SftpEntry[]
 }
 
+/** 文件名搜索的事件：match 渐进推送命中项，done/error 收尾 */
+export interface SftpSearchEvent {
+  searchId: string
+  connectionId: string
+  type: 'match' | 'done' | 'error'
+  /** type=match 时的命中条目 */
+  entries?: SftpEntry[]
+  /** 结果数达到上限被截断 */
+  truncated?: boolean
+  /** 用户主动取消 */
+  stopped?: boolean
+  /** 已扫描的条目数 */
+  scanned?: number
+  /** 命中总数 */
+  total?: number
+  /** type=error 时的错误信息 */
+  message?: string
+}
+
 export interface ReadTerminalResult {
   sessionId: string
   lines: string[]
@@ -428,6 +447,8 @@ export const IpcChannels = {
   sftpUpload: 'sftp:upload',
   sftpDownload: 'sftp:download',
   sftpCancel: 'sftp:cancel',
+  sftpSearch: 'sftp:search',
+  sftpSearchCancel: 'sftp:search-cancel',
   aiStatus: 'ai:status',
   aiAnalyze: 'ai:analyze',
   aiCancel: 'ai:cancel',
@@ -453,7 +474,8 @@ export const IpcChannels = {
   evSessionStatus: 'ev:session:status',
   evTransferProgress: 'ev:transfer:progress',
   evTransferDone: 'ev:transfer:done',
-  evHostKeyPrompt: 'ev:host-key:prompt'
+  evHostKeyPrompt: 'ev:host-key:prompt',
+  evSftpSearch: 'ev:sftp:search'
 } as const
 
 export interface SessionDataEvent {
@@ -537,6 +559,10 @@ export interface RendererApi {
   sftpUpload(connectionId: string, localPath: string, remotePath: string): Promise<string>
   sftpDownload(connectionId: string, remotePath: string, localPath: string): Promise<string>
   sftpCancel(transferId: string): Promise<void>
+  /** 按名称递归搜索远程目录树，返回 searchId；结果通过 onSftpSearch 推送 */
+  sftpSearch(connectionId: string, root: string, keyword: string): Promise<string>
+  sftpSearchCancel(searchId: string): Promise<void>
+  onSftpSearch(cb: (ev: SftpSearchEvent) => void): () => void
   onTransferProgress(cb: (ev: TransferProgressEvent) => void): () => void
   onTransferDone(cb: (ev: TransferDoneEvent) => void): () => void
   /** 拖拽文件的真实磁盘路径（webUtils.getPathForFile）。 */

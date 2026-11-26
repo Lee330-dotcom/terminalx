@@ -179,6 +179,13 @@ export function registerIpcHandlers(ctx: AppContext): void {
     ctx.sftp.download(connectionId, remotePath, localPath)
   )
   ipcMain.handle(IpcChannels.sftpCancel, (_e, transferId) => ctx.sftp.cancel(transferId))
+  ipcMain.handle(IpcChannels.sftpSearch, (_e, connectionId, root, keyword) =>
+    ctx.sftp.startSearch(connectionId, root, keyword)
+  )
+  ipcMain.handle(IpcChannels.sftpSearchCancel, (_e, searchId) =>
+    ctx.sftp.cancelSearch(searchId)
+  )
+
   // ---- 主机指纹 ----
   ipcMain.handle(IpcChannels.hostKeyList, () => ctx.hostKeys.list())
   ipcMain.handle(IpcChannels.hostKeyForget, (_e, host: string, port: number) =>

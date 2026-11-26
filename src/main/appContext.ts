@@ -11,7 +11,7 @@ import { ConnectionManager } from './ssh/connectionManager'
 import { SessionManager, SessionEventSink } from './ssh/sessionManager'
 import { AiService } from './ai/aiService'
 import { AgentService } from './ai/agentService'
-import { SftpService, TransferEventSink } from './ssh/sftpService'
+import { SftpService, SearchEventSink, TransferEventSink } from './ssh/sftpService'
 import { McpService } from './mcp/mcpService'
 import { HostKeyGate } from './ssh/hostKeyGate'
 import { buildConnectConfig, SshConnectOptions } from './ssh/config'
@@ -85,7 +85,14 @@ export class AppContext {
         }
       }
     }
-    this.sftp = new SftpService(this.ssh, transferSink)
+    const searchSink: SearchEventSink = {
+      emitSearch: (ev) => {
+        for (const win of BrowserWindow.getAllWindows()) {
+          win.webContents.send(IpcChannels.evSftpSearch, ev)
+        }
+      }
+    }
+    this.sftp = new SftpService(this.ssh, transferSink, searchSink)
 
     this.ai = new AiService(
       {

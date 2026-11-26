@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { SftpEntry } from '@shared/types'
+import { SftpEntry, SftpSearchEvent } from '@shared/types'
 import { useTransferStore } from '../stores/transfers'
 import { t } from '../i18n'
 
@@ -10,7 +10,7 @@ const props = defineProps<{ connectionId: string }>()
 const transferStore = useTransferStore()
 const currentPath = ref('/')
 const treeItems = ref<TreeItem[]>([])
-const contextMenu = ref<{ visible: boolean; x: number; y: number; item: TreeItem | null }>({
+const contextMenu = ref<{ visible: boolean; x: number; y: number; item: FileNode | null }>({
   visible: false,
   x: 0,
   y: 0,
@@ -22,15 +22,31 @@ const previewText = ref('')
 const previewTitle = ref('')
 const selectedPath = ref<string | null>(null)
 
-interface TreeItem {
+/** 文件名搜索 */
+const searchKeyword = ref('')
+const searchScope = ref<'current' | 'root'>('current')
+const searchResults = ref<SftpEntry[]>([])
+const searching = ref(false)
+const searchTruncated = ref(false)
+const searchStopped = ref(false)
+const searchId = ref<string | null>(null)
+/** 搜索框是否展开（默认收起，用放大镜按钮拉出） */
+const searchOpen = ref(false)
+/** 主进程可能早于 invoke 返回就推送了结果，先按 searchId 暂存 */
+const searchEventBuffer = new Map<string, SftpSearchEvent[]>()
+
+interface FileNode {
   path: string
   name: string
-  depth: number
   isDirectory: boolean
-  isSymlink: boolean
   size: number
   mode: number
   mtime: number
+}
+
+interface TreeItem extends FileNode {
+  depth: number
+  isSymlink: boolean
   loaded: boolean
   expanded: boolean
   loading: boolean
@@ -131,11 +147,16 @@ function onTreeClick(item: TreeItem): void {
 }
 
 function onTreeDblclick(item: TreeItem): void {
-  if (item.isDirectory) void toggleExpand(item)
-  else void previewFile(item)
+  // 双击目录：进入该目录（面包屑与搜索范围随之变化）；
+  // 双击文件：预览
+  if (item.isDirectory) {
+    navigateTo(item.path)
+    return
+  }
+  void previewFile(item)
 }
 
-function onContextMenu(e: MouseEvent, item: TreeItem): void {
+function onContextMenu(e: MouseEvent, item: FileNode): void {
   e.preventDefault()
   e.stopPropagation()
   selectedPath.value = item.path
@@ -156,7 +177,7 @@ function closeContext(): void {
   contextMenu.value.visible = false
 }
 
-async function previewFile(item: TreeItem): Promise<void> {
+async function previewFile(item: FileNode): Promise<void> {
   if (item.isDirectory) return
   if (item.size > 2 * 1024 * 1024) {
     ElMessage.warning(t('sftp.fileTooLarge'))
@@ -171,23 +192,212 @@ async function previewFile(item: TreeItem): Promise<void> {
   }
 }
 
+// ---- 文件名搜索 ----
+
+const searchActive = computed(() => searchKeyword.value.trim().length > 0)
+const searchRootPath = computed(() => (searchScope.value === 'root' ? '/' : currentPath.value))
+
+/** 输入停顿多久后自动开始搜索（毫秒） */
+const AUTO_SEARCH_DELAY_MS = 600
+let autoSearchTimer: ReturnType<typeof setTimeout> | null = null
+const searchInputRef = ref<HTMLInputElement | null>(null)
+
+/** 命中片段在名称中的位置，用于高亮 */
+function highlightParts(name: string): { text: string; hit: boolean }[] {
+  const key = searchKeyword.value.trim().toLowerCase()
+  if (!key) return [{ text: name, hit: false }]
+  const idx = name.toLowerCase().indexOf(key)
+  if (idx < 0) return [{ text: name, hit: false }]
+  const parts: { text: string; hit: boolean }[] = []
+  if (idx > 0) parts.push({ text: name.slice(0, idx), hit: false })
+  parts.push({ text: name.slice(idx, idx + key.length), hit: true })
+  if (idx + key.length < name.length) parts.push({ text: name.slice(idx + key.length), hit: false })
+  return parts
+}
+
+/** 结果项展示的相对目录（相对于搜索根） */
+function resultDir(entry: SftpEntry): string {
+  const dir = entry.path.slice(0, entry.path.length - entry.name.length - 1) || '/'
+  const root = searchRootPath.value
+  if (root !== '/' && dir.startsWith(root)) {
+    const rel = dir.slice(root.length).replace(/^\//, '')
+    return rel || '/'
+  }
+  return dir
+}
+
+function cancelAutoSearch(): void {
+  if (autoSearchTimer) {
+    clearTimeout(autoSearchTimer)
+    autoSearchTimer = null
+  }
+}
+
+/** 输入停顿后自动搜索 */
+function scheduleAutoSearch(): void {
+  cancelAutoSearch()
+  autoSearchTimer = setTimeout(() => {
+    autoSearchTimer = null
+    void startSearch()
+  }, AUTO_SEARCH_DELAY_MS)
+}
+
+async function startSearch(): Promise<void> {
+  cancelAutoSearch()
+  const keyword = searchKeyword.value.trim()
+  if (!keyword) return
+  await stopSearch()
+  searchResults.value = []
+  searchTruncated.value = false
+  searchStopped.value = false
+  searching.value = true
+  const root = searchRootPath.value
+  try {
+    const id = await window.api.sftpSearch(props.connectionId, root, keyword)
+    searchId.value = id
+    // 主进程可能已经推送了部分结果，这里补上
+    const buffered = searchEventBuffer.get(id)
+    if (buffered) {
+      for (const ev of buffered) applySearchEvent(ev)
+      searchEventBuffer.delete(id)
+    }
+  } catch (err) {
+    searching.value = false
+    ElMessage.error(t('sftp.searchFailed', { err: String(err) }))
+  }
+}
+
+async function stopSearch(): Promise<void> {
+  cancelAutoSearch()
+  const id = searchId.value
+  searchId.value = null
+  searching.value = false
+  if (!id) return
+  try {
+    await window.api.sftpSearchCancel(id)
+  } catch {
+    /* 主进程已结束时忽略 */
+  }
+}
+
+function clearSearch(): void {
+  void stopSearch()
+  searchKeyword.value = ''
+  searchResults.value = []
+  searchTruncated.value = false
+  searchStopped.value = false
+}
+
+/** 放大镜按钮：拉出 / 收起搜索框 */
+function toggleSearchBox(): void {
+  searchOpen.value = !searchOpen.value
+  if (searchOpen.value) {
+    void nextTick(() => searchInputRef.value?.focus())
+  } else {
+    cancelAutoSearch()
+  }
+}
+
+/** 切换搜索范围；有关键字时立即按新范围重搜 */
+function setSearchScope(scope: 'current' | 'root'): void {
+  if (searchScope.value === scope) return
+  searchScope.value = scope
+  if (searchActive.value) void startSearch()
+}
+
+// 输入即搜索：停顿 AUTO_SEARCH_DELAY_MS 后自动发起；回车可立即发起
+watch(searchKeyword, (kw) => {
+  if (!searchOpen.value) return
+  if (!kw.trim()) {
+    void stopSearch()
+    searchResults.value = []
+    return
+  }
+  scheduleAutoSearch()
+})
+
+function applySearchEvent(ev: SftpSearchEvent): void {
+  if (ev.type === 'match') {
+    if (ev.entries?.length) searchResults.value.push(...ev.entries)
+    return
+  }
+  searching.value = false
+  if (ev.type === 'error') {
+    ElMessage.error(t('sftp.searchFailed', { err: ev.message ?? '' }))
+    return
+  }
+  searchTruncated.value = ev.truncated === true
+  searchStopped.value = ev.stopped === true
+}
+
+function onSearchEvent(ev: SftpSearchEvent): void {
+  if (ev.connectionId !== props.connectionId) return
+  if (ev.searchId === searchId.value) {
+    applySearchEvent(ev)
+    return
+  }
+  // 尚未拿到本次 searchId（invoke 未返回）时先暂存
+  const list = searchEventBuffer.get(ev.searchId) ?? []
+  list.push(ev)
+  searchEventBuffer.set(ev.searchId, list)
+}
+
+function onSearchResultClick(entry: SftpEntry): void {
+  // 定位到结果所在目录：目录结果直接进入，文件结果进入父目录并选中它
+  clearSearch()
+  if (entry.isDirectory) {
+    navigateTo(entry.path)
+    return
+  }
+  navigateTo(parentDirOf(entry))
+  selectedPath.value = entry.path
+}
+
+function onSearchResultContextMenu(e: MouseEvent, entry: SftpEntry): void {
+  e.preventDefault()
+  e.stopPropagation()
+  selectedPath.value = entry.path
+  contextMenu.value = { visible: true, x: e.clientX, y: e.clientY, item: entry }
+}
+
+/** 条目所在目录 */
+function parentDirOf(item: FileNode): string {
+  return item.path.slice(0, item.path.length - item.name.length - 1) || '/'
+}
+
 async function doRefresh(): Promise<void> {
   closeContext()
   const item = contextMenu.value.item
-  if (item) {
-    // Refresh this directory: collapse and reload
-    if (item.isDirectory && item.expanded) {
-      collapseItem(item)
-      item.loaded = false
-    }
-    item.loading = true
-    await refreshTree(item.path)
-    item.expanded = true
-  } else {
-    // Refresh root
+  if (!item) {
+    // 刷新根目录
     treeItems.value = []
     await refreshTree(currentPath.value)
+    return
   }
+  const treeItem = treeItems.value.find((it) => it.path === item.path)
+  if (treeItem?.isDirectory) {
+    // 收起后重新加载该目录
+    if (treeItem.expanded) {
+      collapseItem(treeItem)
+      treeItem.loaded = false
+    }
+    treeItem.loading = true
+    await refreshTree(treeItem.path)
+    treeItem.expanded = true
+    return
+  }
+  if (treeItem) {
+    // 树内文件：刷新其所在目录
+    const parent = treeItems.value.find((it) => it.path === parentDirOf(treeItem))
+    if (parent) await refreshTree(parent.path)
+    else {
+      treeItems.value = []
+      await refreshTree(currentPath.value)
+    }
+    return
+  }
+  // 搜索结果：定位到所在目录
+  navigateTo(item.isDirectory ? item.path : parentDirOf(item))
 }
 
 async function doUpload(): Promise<void> {
@@ -324,22 +534,28 @@ function onGlobalClick(): void {
   if (contextMenu.value.visible) contextMenu.value.visible = false
 }
 
+let unsubSearch: (() => void) | null = null
+
 onMounted(() => {
   document.addEventListener('click', onGlobalClick)
+  unsubSearch = window.api.onSftpSearch(onSearchEvent)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', onGlobalClick)
+  unsubSearch?.()
+  cancelAutoSearch()
+  void stopSearch()
 })
 
 // Watch connection changes
-import { watch } from 'vue'
 watch(
   () => props.connectionId,
   () => {
     currentPath.value = '/'
     treeItems.value = []
     selectedPath.value = null
+    clearSearch()
     void refreshTree()
   },
   { immediate: true }
@@ -443,72 +659,215 @@ watch(
           <path d="M8 1v3h3" />
         </svg>
       </button>
+      <!-- 放大镜：点开搜索框 -->
+      <button
+        class="breadcrumb-btn search-toggle"
+        :class="{ active: searchOpen }"
+        @click.stop="toggleSearchBox"
+        :title="searchOpen ? t('sftp.searchClose') : t('sftp.searchOpen')"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
+          <circle cx="7" cy="7" r="4.5" />
+          <path d="M10.5 10.5L14 14" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- 文件名搜索 -->
+    <div v-show="searchOpen" class="sftp-search">
+      <div class="search-field">
+        <svg
+          class="search-icon"
+          width="14"
+          height="14"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
+          <circle cx="7" cy="7" r="4.5" />
+          <path d="M10.5 10.5L14 14" />
+        </svg>
+        <input
+          ref="searchInputRef"
+          v-model="searchKeyword"
+          class="search-input"
+          type="text"
+          :placeholder="t('sftp.searchPlaceholder')"
+          @keyup.enter="startSearch"
+          @keyup.esc="clearSearch"
+        />
+        <button
+          v-if="searchKeyword"
+          class="search-clear"
+          :title="t('sftp.searchClear')"
+          @click.stop="clearSearch"
+        >
+          ×
+        </button>
+      </div>
+      <!-- 搜索范围：当前目录 / 全盘，当前选中项高亮 -->
+      <div class="search-scope" role="group" :aria-label="t('sftp.searchScopeLabel')">
+        <button
+          class="scope-opt"
+          :class="{ active: searchScope === 'current' }"
+          @click.stop="setSearchScope('current')"
+        >
+          {{ t('sftp.searchScopeCurrent') }}
+        </button>
+        <button
+          class="scope-opt"
+          :class="{ active: searchScope === 'root' }"
+          @click.stop="setSearchScope('root')"
+        >
+          {{ t('sftp.searchScopeRoot') }}
+        </button>
+      </div>
+      <button
+        v-if="searching"
+        class="search-btn stop"
+        @click.stop="stopSearch"
+      >
+        {{ t('sftp.searchStop') }}
+      </button>
+      <button v-else class="search-btn" @click.stop="startSearch">
+        {{ t('sftp.search') }}
+      </button>
     </div>
 
     <!-- Tree -->
     <div class="sftp-tree">
-      <div v-if="treeItems.length === 0" class="tree-empty">{{ t('sftp.emptyDir') }}</div>
-      <div
-        v-for="item in treeItems"
-        :key="item.path"
-        class="tree-item"
-        :class="{
-          selected: selectedPath === item.path,
-          'is-dir': item.isDirectory
-        }"
-        :style="{ paddingLeft: `${item.depth * 20 + 8}px` }"
-        @click.stop="onTreeClick(item)"
-        @dblclick.stop="onTreeDblclick(item)"
-        @contextmenu.stop="onContextMenu($event, item)"
-      >
-        <span class="tree-arrow" @click.stop="item.isDirectory ? toggleExpand(item) : undefined">
-          <template v-if="item.isDirectory">
-            <span v-if="item.loading" class="tree-spinner" />
+      <template v-if="searchActive">
+        <div class="search-status">
+          <span>{{
+            t('sftp.searchResultCount', { n: searchResults.length, root: searchRootPath })
+          }}</span>
+          <span v-if="searching" class="search-status-running">{{ t('sftp.searching') }}</span>
+          <span v-else-if="searchStopped" class="search-status-warn">{{
+            t('sftp.searchStopped')
+          }}</span>
+          <span v-else-if="searchTruncated" class="search-status-warn">{{
+            t('sftp.searchTruncated')
+          }}</span>
+        </div>
+        <div v-if="!searching && searchResults.length === 0" class="tree-empty">
+          {{ t('sftp.searchNoResult') }}
+        </div>
+        <div
+          v-for="entry in searchResults"
+          :key="entry.path"
+          class="tree-item search-result"
+          :class="{ 'is-dir': entry.isDirectory }"
+          @click.stop="onSearchResultClick(entry)"
+          @contextmenu.stop="onSearchResultContextMenu($event, entry)"
+        >
+          <span class="tree-icon">
             <svg
-              v-else-if="item.expanded"
-              width="10"
-              height="10"
-              viewBox="0 0 10 10"
-              fill="currentColor"
-            >
-              <path d="M2 3l3 4 3-4z" />
-            </svg>
-            <svg v-else width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-              <path d="M3 2l4 3-4 3z" />
-            </svg>
-          </template>
-        </span>
-        <span class="tree-icon">
-          <template v-if="item.isSymlink">
-            <svg
+              v-if="entry.isDirectory"
               width="14"
               height="14"
               viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.2"
+              fill="currentColor"
+              class="icon-folder"
             >
-              <path d="M6 10l4-4M6 6h4v4" />
-            </svg>
-          </template>
-          <template v-else-if="item.isDirectory">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" class="icon-folder">
               <path d="M2 3h5l2 2h5v8H2V3z" />
             </svg>
-          </template>
-          <template v-else>
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" class="icon-file">
+            <svg v-else width="14" height="14" viewBox="0 0 16 16" fill="currentColor" class="icon-file">
               <path d="M4 1h5l4 4v10H4V1z" />
             </svg>
-          </template>
-        </span>
-        <span class="tree-name">
-          {{ item.name }}
-          <span v-if="item.isSymlink" class="tree-symlink">→ {{ basename(item.path) }}</span>
-        </span>
-        <span v-if="!item.isDirectory" class="tree-size">{{ formatSize(item.size) }}</span>
-        <span class="tree-mode">{{ formatMode(item.mode, item.isDirectory) }}</span>
-      </div>
+          </span>
+          <span class="search-result-main">
+            <span class="tree-name">
+              <template v-for="(part, i) in highlightParts(entry.name)" :key="i">
+                <span :class="part.hit ? 'search-hit' : ''">{{ part.text }}</span>
+              </template>
+            </span>
+            <span class="search-result-dir" :title="resultDir(entry)">{{
+              '\u200E' + resultDir(entry)
+            }}</span>
+          </span>
+          <span v-if="!entry.isDirectory && entry.size > 0" class="tree-size">{{
+            formatSize(entry.size)
+          }}</span>
+        </div>
+      </template>
+      <template v-else>
+        <div v-if="treeItems.length === 0" class="tree-empty">{{ t('sftp.emptyDir') }}</div>
+        <div
+          v-for="item in treeItems"
+          :key="item.path"
+          class="tree-item"
+          :class="{
+            selected: selectedPath === item.path,
+            'is-dir': item.isDirectory
+          }"
+          :style="{ paddingLeft: `${item.depth * 20 + 8}px` }"
+          @click.stop="onTreeClick(item)"
+          @dblclick.stop="onTreeDblclick(item)"
+          @contextmenu.stop="onContextMenu($event, item)"
+        >
+          <span class="tree-arrow" @click.stop="item.isDirectory ? toggleExpand(item) : undefined">
+            <template v-if="item.isDirectory">
+              <span v-if="item.loading" class="tree-spinner" />
+              <svg
+                v-else-if="item.expanded"
+                width="10"
+                height="10"
+                viewBox="0 0 10 10"
+                fill="currentColor"
+              >
+                <path d="M2 3l3 4 3-4z" />
+              </svg>
+              <svg v-else width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                <path d="M3 2l4 3-4 3z" />
+              </svg>
+            </template>
+          </span>
+          <span class="tree-icon">
+            <template v-if="item.isSymlink">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.2"
+              >
+                <path d="M6 10l4-4M6 6h4v4" />
+              </svg>
+            </template>
+            <template v-else-if="item.isDirectory">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+                class="icon-folder"
+              >
+                <path d="M2 3h5l2 2h5v8H2V3z" />
+              </svg>
+            </template>
+            <template v-else>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" class="icon-file">
+                <path d="M4 1h5l4 4v10H4V1z" />
+              </svg>
+            </template>
+          </span>
+          <span class="tree-name">
+            {{ item.name }}
+            <span v-if="item.isSymlink" class="tree-symlink">→ {{ basename(item.path) }}</span>
+          </span>
+          <span v-if="!item.isDirectory" class="tree-size">{{ formatSize(item.size) }}</span>
+          <span class="tree-mode">{{ formatMode(item.mode, item.isDirectory) }}</span>
+        </div>
+      </template>
     </div>
 
     <!-- Transfers -->
@@ -735,6 +1094,11 @@ watch(
   background: var(--tx-hover);
   color: var(--tx-text);
 }
+/* 搜索放大镜：展开时高亮，提示当前处于搜索状态 */
+.search-toggle.active {
+  background: var(--tx-accent-soft);
+  color: var(--tx-accent);
+}
 .breadcrumb-path {
   flex: 1;
   display: flex;
@@ -767,6 +1131,179 @@ watch(
 .breadcrumb-part:hover {
   background: var(--tx-hover);
   color: var(--tx-accent-hover);
+}
+
+/* 文件名搜索 */
+.sftp-search {
+  /* 两行固定网格：输入框独占一行，范围与搜索按钮各占一角。
+     面板被拉窄时不会互相挤压或被裁掉。 */
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    'field field'
+    'scope btn';
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--tx-border);
+  flex-shrink: 0;
+}
+.search-field {
+  grid-area: field;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 6px 0 8px;
+  border: 1px solid var(--tx-border);
+  border-radius: var(--tx-radius-sm);
+  background: var(--tx-bg);
+  color: var(--tx-text-3);
+}
+.search-field:focus-within {
+  border-color: var(--tx-accent);
+}
+.search-icon {
+  flex-shrink: 0;
+}
+.search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--tx-text);
+  font: inherit;
+  font-size: 13px;
+}
+.search-input::placeholder {
+  color: var(--tx-text-3);
+}
+.search-clear {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--tx-text-3);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.search-clear:hover {
+  background: var(--tx-hover);
+  color: var(--tx-text);
+}
+.search-scope {
+  grid-area: scope;
+  justify-self: start;
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 26px;
+  border: 1px solid var(--tx-border);
+  border-radius: var(--tx-radius-sm);
+  background: var(--tx-bg);
+  overflow: hidden;
+}
+.scope-opt {
+  border: none;
+  background: transparent;
+  color: var(--tx-text-3);
+  font: inherit;
+  font-size: var(--tx-font-xs);
+  padding: 0 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.scope-opt:hover {
+  color: var(--tx-text);
+}
+.scope-opt.active {
+  background: var(--tx-accent-soft);
+  color: var(--tx-accent);
+  font-weight: 500;
+}
+.search-btn {
+  grid-area: btn;
+  justify-self: end;
+  flex-shrink: 0;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--tx-radius-sm);
+  background: var(--tx-accent);
+  color: var(--tx-on-accent);
+  font: inherit;
+  font-size: var(--tx-font-xs);
+  cursor: pointer;
+}
+.search-btn:hover {
+  background: var(--tx-accent-hover);
+}
+.search-btn.stop {
+  background: var(--tx-fill);
+  border-color: var(--tx-border);
+  color: var(--tx-text-2);
+}
+.search-btn.stop:hover {
+  background: var(--tx-hover);
+  color: var(--tx-text);
+}
+
+/* 搜索结果 */
+.search-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--tx-border);
+  color: var(--tx-text-3);
+  font-size: var(--tx-font-xs);
+}
+.search-status-running {
+  color: var(--tx-accent);
+}
+.search-status-warn {
+  color: var(--tx-warning);
+}
+/* 窄面板下文件名被压缩得看不清，改为「名称一行 + 路径一行」两行排布 */
+.search-result {
+  height: auto;
+  min-height: 30px;
+  align-items: flex-start;
+  padding: 4px 8px;
+}
+.search-result .tree-icon {
+  margin-top: 3px;
+}
+.search-result-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.search-result-main .tree-name {
+  flex: none;
+}
+.search-hit {
+  color: var(--tx-accent-hover);
+  background: var(--tx-accent-soft);
+  border-radius: 2px;
+}
+/* 路径过长时从左侧省略：direction:rtl 把省略号放到行尾（左侧） */
+.search-result-dir {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  color: var(--tx-text-3);
+  font-size: 11px;
 }
 
 /* Tree */
