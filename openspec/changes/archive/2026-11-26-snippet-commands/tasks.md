@@ -28,4 +28,4 @@
 - [x] 4.2 `npm run test` 通过（含新增单测）
 - [x] 4.3 `npm run dev` 供用户预览：新建片段 → 命令面板搜索命中 → 右键菜单下发 → 占位符填参确认
 - [x] 4.4 `openspec validate snippet-commands --strict` 通过
-- [ ] 4.5 变更归档：`openspec archive snippet-commands -y` 并更新 `openspec/specs/`
+- [x] 4.5 变更归档：`openspec archive snippet-commands -y` 并更新 `openspec/specs/`
