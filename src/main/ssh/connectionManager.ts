@@ -123,8 +123,13 @@ export class ConnectionManager {
       }
       return this.handleFor(connectionId, existing)
     }
+    const configStarted = Date.now()
     const config = await this.buildConfig(connectionId)
+    const configMs = Date.now() - configStarted
     const client = await this.connect(config)
+    console.log(
+      `[timing] 建连 ${connectionId} 配置 ${configMs}ms，握手 ${Date.now() - configStarted - configMs}ms`
+    )
     // 并发 acquire 可能各自完成建连：后完成的复用先入池的连接，
     // 销毁自己的多余 client，避免池被覆盖、旧连接泄漏
     const raced = this.clients.get(connectionId)

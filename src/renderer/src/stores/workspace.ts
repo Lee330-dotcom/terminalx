@@ -149,8 +149,18 @@ export const useWorkspaceStore = defineStore('workspace', {
       pane.title = title ?? connectionId
       pane.status = 'connecting'
       pane.errorMessage = undefined
+      const started = performance.now()
       const { sessionId } = await window.api.openSession(connectionId)
+      console.log(`[timing] 渲染层 ${connectionId} 打开会话 IPC ${Math.round(performance.now() - started)}ms`)
       pane.sessionId = sessionId
+      // 首个字节到达时间：用户从点击连接到看到服务器输出的完整耗时
+      const unsub = window.api.onSessionData((ev) => {
+        if (ev.sessionId !== sessionId) return
+        console.log(
+          `[timing] 渲染层 ${connectionId} 首个字节 ${Math.round(performance.now() - started)}ms`
+        )
+        unsub()
+      })
       useSessionStore().recordUsage(connectionId)
     },
 

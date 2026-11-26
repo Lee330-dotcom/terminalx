@@ -117,6 +117,7 @@ export class SessionManager {
 
   private async attachShell(session: TerminalSession): Promise<void> {
     const attachId = ++session.attachId
+    const started = Date.now()
     let handle: ClientHandle | null = null
     /** 本次附加是否仍然是会话当前的有效附加 */
     const stale = (): boolean => session.attachId !== attachId || !this.sessions.has(session.id)
@@ -132,6 +133,9 @@ export class SessionManager {
       // 否则先按 80x24 打开，随后的 resize 会立即通过 setWindow 补上
       const { cols, rows } = session.size ?? { cols: 80, rows: 24 }
       const stream = await openShell(handle.client, cols, rows)
+      console.log(
+        `[timing] 会话 ${session.id} 建连 ${Date.now() - started}ms，开 shell ${Date.now() - started}ms`
+      )
       if (stale()) {
         stream.close()
         if (this.sessions.has(session.id)) handle.release()

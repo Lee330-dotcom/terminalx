@@ -16,7 +16,8 @@ function makeApi(): ApiMock {
     }),
     closeSession: vi.fn(async () => undefined),
     reconnectSession: vi.fn(async () => undefined),
-    onSessionStatus: vi.fn(() => () => undefined)
+    onSessionStatus: vi.fn(() => () => undefined),
+    onSessionData: vi.fn(() => () => undefined)
   }
 }
 
